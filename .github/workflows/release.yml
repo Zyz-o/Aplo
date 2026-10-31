@@ -1,0 +1,59 @@
+name: Build and publish preview
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/release.yml']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aplo-preview-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: macos-15
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Run checks
+        run: zsh test.sh
+      - name: Build application and package source
+        shell: bash
+        run: |
+          set -euo pipefail
+          zsh Scripts/package-release.sh
+          version=$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' Info.plist)
+          git archive --format=zip --prefix="Aplo-$version/" -o "dist/Aplo-$version-source.zip" HEAD
+          (cd dist && shasum -a 256 "Aplo-$version-macOS-arm64.zip" "Aplo-$version-source.zip" > SHA256SUMS.txt)
+          echo "APLO_VERSION=$version" >> "$GITHUB_ENV"
+      - name: Publish preview release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="v$APLO_VERSION"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release $tag already exists; leaving it unchanged."
+            exit 0
+          fi
+          cat > /tmp/aplo-release-notes.md <<'NOTES'
+          Native macOS application launcher with fullscreen and compact layouts, search, folders, free placement and continuous scrolling.
+
+          Apple Silicon (arm64), macOS 13+. Download the application ZIP, extract it, and copy Aplo.app to Applications. Quit older instances and back up your layout before upgrading.
+
+          Preview build: ad hoc signed, without Apple Developer ID signing or notarization. macOS may block first launch. You may review and build the source instead. Automated checks run before publication; physical trackpad frame times are not measured, and smoothness on every device is not guaranteed.
+
+          Includes the corresponding source archive and SHA-256 checksums. GPL-3.0; see LICENSE and THIRD_PARTY_NOTICES.md for LaunchNext / LaunchNow attribution. Changes are documented in CHANGELOG.md.
+          NOTES
+          gh release create "$tag" "dist/Aplo-$APLO_VERSION-macOS-arm64.zip" "dist/Aplo-$APLO_VERSION-source.zip" dist/SHA256SUMS.txt \
+            --target "$GITHUB_SHA" --title "Aplo $APLO_VERSION — macOS Preview" --prerelease --notes-file /tmp/aplo-release-notes.md
