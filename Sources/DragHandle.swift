@@ -1,0 +1,129 @@
+import AppKit
+import SwiftUI
+
+// Native destinations keep the drag payload valid even if SwiftUI rebuilds a page.
+struct NativePageDropTarget: NSViewRepresentable {
+    let model: LauncherModel
+    let page: Int
+    func makeNSView(context: Context) -> PageDropView { PageDropView() }
+    func updateNSView(_ view: PageDropView, context: Context) {
+        view.model = model
+        view.page = page
+    }
+}
+
+final class PageDropView: NSView {
+    weak var model: LauncherModel?
+    var page = 0
+    private let payloadType = NSPasteboard.PasteboardType(launcherDragType.identifier)
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        registerForDraggedTypes([payloadType])
+    }
+    required init?(coder: NSCoder) { nil }
+    override func mouseUp(with event: NSEvent) { model?.goToPage(page) }
+    private func source(_ sender: NSDraggingInfo) -> String? {
+        guard model?.canOrganize == true,
+              let value = sender.draggingPasteboard.string(forType: payloadType),
+              value.utf8.count < 4096 else { return nil }
+        return value
+    }
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { draggingUpdated(sender) }
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        guard source(sender) != nil else { return [] }
+        model?.dropHint = "松开移至第 \(page + 1) 页"
+        return .move
+    }
+    override func draggingExited(_ sender: NSDraggingInfo?) { model?.dropHint = nil }
+    override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool { source(sender) != nil }
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        guard let source = source(sender), let model else { return false }
+        model.drop(source, toPage: page)
+        return true
+    }
+}
+
+struct NativeDragHandle: NSViewRepresentable {
+    let model: LauncherModel
+    let item: LayoutItem
+    let click: () -> Void
+    func makeNSView(context: Context) -> DragSourceView { DragSourceView() }
+    func updateNSView(_ view: DragSourceView, context: Context) {
+        view.model = model
+        view.iconSize = min(model.preferences.iconPoints(fullscreen: model.isFullscreen), max(24, LauncherGeometry.tileWidth(displayWidth: model.displayWidth, fullscreen: model.isFullscreen) - 18))
+        view.itemID = item.id
+        view.click = click
+        if let appID = item.appID, let app = model.app(for: appID) {
+            view.icon = model.icon(for: app); view.folderImages = []
+        } else {
+            view.icon = nil
+            view.folderImages = item.children.prefix(9).compactMap { model.app(for: $0) }.map { model.icon(for: $0) }
+        }
+    }
+}
+
+final class DragSourceView: NSView, NSDraggingSource {
+    weak var model: LauncherModel?
+    var itemID = ""
+    var icon: NSImage?
+    var folderImages: [NSImage] = []
+    var iconSize: CGFloat = 50
+    var click: (() -> Void)?
+    private var start: NSPoint?
+    private var didDrag = false
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        if let type = NSApp.currentEvent?.type, type == .rightMouseDown || type == .rightMouseUp { return nil }
+        return super.hitTest(point)
+    }
+    override func mouseDown(with event: NSEvent) {
+        start = convert(event.locationInWindow, from: nil)
+        didDrag = false
+    }
+    override func mouseDragged(with event: NSEvent) {
+        guard !didDrag, let start, let model, model.canBeginIconDrag else { return }
+        let point = convert(event.locationInWindow, from: nil)
+        guard hypot(point.x - start.x, point.y - start.y) >= 3 else { return }
+        didDrag = true
+        model.beginInteractiveDrag(itemID)
+        let pasteboard = NSPasteboardItem()
+        pasteboard.setString(itemID, forType: NSPasteboard.PasteboardType(launcherDragType.identifier))
+        let draggingItem = NSDraggingItem(pasteboardWriter: pasteboard)
+        let frame = NSRect(x: point.x - iconSize / 2, y: point.y - iconSize / 2, width: iconSize, height: iconSize)
+        // Build the folder drag thumbnail once per session, never for each pointer sample.
+        let dragImage = icon ?? Self.folderThumbnail(folderImages)
+        draggingItem.setDraggingFrame(frame, contents: dragImage)
+        beginDraggingSession(with: [draggingItem], event: event, source: self)
+    }
+    private static func folderThumbnail(_ images: [NSImage]) -> NSImage {
+        NSImage(size: NSSize(width: 384, height: 384), flipped: false) { rect in
+            NSColor(white: 0.72, alpha: 0.35).setFill()
+            NSBezierPath(roundedRect: rect.insetBy(dx: 2, dy: 2), xRadius: 64, yRadius: 64).fill()
+            NSGraphicsContext.current?.imageInterpolation = .high
+            for (index, image) in images.enumerated() {
+                let x = 38 + CGFloat(index % 3) * 106
+                let y = 258 - CGFloat(index / 3) * 106
+                image.draw(in: NSRect(x: x, y: y, width: 88, height: 88), from: .zero, operation: .sourceOver, fraction: 1)
+            }
+            return true
+        }
+    }
+    override func mouseUp(with event: NSEvent) {
+        if !didDrag { click?() }
+        start = nil
+    }
+    func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
+        context == .withinApplication ? .move : []
+    }
+    func ignoreModifierKeys(for session: NSDraggingSession) -> Bool { true }
+    func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
+        if CommandLine.arguments.contains("--diagnostics") {
+            FileHandle.standardError.write(Data(("[Aplo] drag ended operation=\(operation.rawValue)\n").utf8))
+        }
+        let model = model
+        DispatchQueue.main.async { model?.endDrag() }
+        start = nil
+        didDrag = false
+    }
+}

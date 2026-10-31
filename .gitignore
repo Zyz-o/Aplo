@@ -1,0 +1,10 @@
+build/
+.DS_Store
+References/
+dist/
+.env
+.env.*
+*.p12
+*.mobileprovision
+REVIEW-*.md
+VALIDATION*.md
