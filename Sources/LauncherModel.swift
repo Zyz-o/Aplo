@@ -1,6 +1,14 @@
 import AppKit
 import Foundation
 
+// A worker owns and copies the native image before handing it to MainActor.
+// No view or layer is accessed by the worker, and the delivered image is read-only.
+private struct IconDelivery: @unchecked Sendable { let image: NSImage }
+@MainActor private final class WeakTileFeedback {
+    weak var value: TileDragFeedback?
+    init(_ value: TileDragFeedback) { self.value = value }
+}
+
 enum ItemDropPosition: Sendable { case before, center, after }
 
 @MainActor
@@ -38,7 +46,7 @@ final class LauncherModel: ObservableObject {
     }
     @Published var horizontalRowCount = 3
     @Published var pageHeight: CGFloat = 400
-    var pageWidth: CGFloat { max(1, displayWidth - (isFullscreen ? 80 : 48)) }
+    var pageWidth: CGFloat { max(1, displayWidth - 2 * LauncherGeometry.contentInset(fullscreen: isFullscreen)) }
     var pageExtent: CGFloat { pageMotion.axis == .vertical ? max(1, pageHeight) : pageWidth }
     var columnCount: Int { LauncherGeometry.columnCount(displayWidth: displayWidth, fullscreen: isFullscreen) }
     var gridWidth: CGFloat { LauncherGeometry.gridWidth(displayWidth: displayWidth, fullscreen: isFullscreen) }
@@ -60,7 +68,7 @@ final class LauncherModel: ObservableObject {
     @Published var shortcutAvailable = true
     @Published var editing = false
     var onSettingsVisibilityChanged: (() -> Void)?
-    var onPreferencesChanged: (() -> Void)?
+    var onPreferencesChanged: ((PreferenceChanges) -> Void)?
     @Published private(set) var preferences: LauncherPreferences { didSet { cachedContainerItems = nil } }
     @Published var presentingAppearancePreview = false { didSet { onAppearancePreviewChanged?() } }
     var onAppearancePreviewChanged: (() -> Void)?
@@ -98,10 +106,21 @@ final class LauncherModel: ObservableObject {
     var onLegacyImport: (() -> Void)?
     var onNativeImport: (() -> Void)?
     private let preferencesStore: PreferencesStore
+    private var pendingPreferencesSave: Task<Void, Never>?
+    private var preferencesDirty = false
     private let searchIndex = IntegratedSearch()
     private let catalog: AppCatalog
     let store: LayoutStore
     private var icons: [String: NSImage] = [:]
+    private let iconQueue: OperationQueue = {
+        let queue = OperationQueue(); queue.name = "Aplo.IconPrefetch"
+        queue.maxConcurrentOperationCount = 1; queue.qualityOfService = .utility
+        return queue
+    }()
+    private var iconJobs: [String: BlockOperation] = [:]
+    private var iconTokens: [String: UUID] = [:]
+    private var iconWaiters: [String: [ObjectIdentifier: WeakTileFeedback]] = [:]
+    private static let pendingIcon = NSImage(systemSymbolName: "app.dashed", accessibilityDescription: nil)!
     private var iconWarmup: Task<Void, Never>?
     // Native scrolling owns the frame budget; no published changes per event.
     private var scrollBusyUntil: TimeInterval = 0
@@ -109,6 +128,8 @@ final class LauncherModel: ObservableObject {
     private var scrollInteractionActive: Bool { ProcessInfo.processInfo.systemUptime < scrollBusyUntil }
     private var catalogRefresh: Task<Void, Never>?
     private var refreshGeneration: UInt64 = 0
+    private var lastCompletedScan: TimeInterval?
+    private var refreshInFlight = false
     private var hasTrustedInventory = false
     private var completedRefreshGeneration: UInt64 = 0
     @Published var importInProgress = false
@@ -207,12 +228,26 @@ final class LauncherModel: ObservableObject {
         let navigationChanged = updated.navigationStyle != preferences.navigationStyle || updated.pagingDirection != preferences.pagingDirection
         let categoryChanged = updated.automaticCategories != preferences.automaticCategories
         let languageChanged = updated.language != preferences.language
-        preferencesStore.save(updated)
+        let changes = PreferenceChanges(from: preferences, to: updated)
         preferences = updated
+        preferencesDirty = true
+        pendingPreferencesSave?.cancel()
+        if changes.contains(.deferredSave) {
+            pendingPreferencesSave = Task { @MainActor [weak self] in
+                do { try await Task.sleep(for: .milliseconds(200)) } catch { return }
+                self?.flushPreferences()
+            }
+        } else { flushPreferences() }
         if navigationChanged || orderingChanged { pageIndex = 0; selectedIndex = 0 }
         if categoryChanged { openFolderID = nil; renamingFolderID = nil; folderNameDraft = ""; editing = false; query = ""; focusGeneration += 1 }
-        onPreferencesChanged?()
+        onPreferencesChanged?(changes)
         if languageChanged { requestRefresh(resetSearch: false) }
+    }
+
+    func flushPreferences() {
+        pendingPreferencesSave?.cancel(); pendingPreferencesSave = nil
+        guard preferencesDirty else { return }
+        preferencesStore.save(preferences); preferencesDirty = false
     }
 
     func text(_ source: String) -> String { AppStrings.text(source, language: preferences.language) }
@@ -220,14 +255,31 @@ final class LauncherModel: ObservableObject {
     func name(for item: LayoutItem) -> String {
         item.kind == .folder ? (item.id.hasPrefix("category:") ? text(item.title ?? "文件夹") : item.title ?? "文件夹") : item.appID.flatMap { lookup[$0]?.name }.map { preferences.language.usesTraditionalChinese ? text($0) : $0 } ?? text("应用")
     }
-    func icon(for app: InstalledApp) -> NSImage {
-        if let image = icons[app.url.path] { return image }
-        // Keep the native multi-resolution image. Eagerly rasterizing every icon at
-        // 384 px blocks the first frame and discards AppKit's representation choice.
-        // SwiftUI/AppKit select the appropriate representation for size and display.
-        let image = NSWorkspace.shared.icon(forFile: app.url.path)
-        icons[app.url.path] = image
-        return image
+    func icon(for app: InstalledApp, notifying feedback: TileDragFeedback? = nil, prewarm: Bool = false) -> NSImage {
+        let path = app.url.path
+        if let image = icons[path] { return image }
+        if let feedback { iconWaiters[path, default: [:]][ObjectIdentifier(feedback)] = WeakTileFeedback(feedback) }
+        if let job = iconJobs[path] {
+            if !prewarm { job.queuePriority = .veryHigh }
+            return Self.pendingIcon
+        }
+        let token = UUID(); iconTokens[path] = token
+        let job = BlockOperation { [weak self] in
+            let delivery = autoreleasepool {
+                let image = NSWorkspace.shared.icon(forFile: path)
+                return IconDelivery(image: (image.copy() as? NSImage) ?? image)
+            }
+            Task { @MainActor [weak self] in
+                guard let self, self.iconTokens[path] == token else { return }
+                self.icons[path] = delivery.image
+                self.iconJobs.removeValue(forKey: path); self.iconTokens.removeValue(forKey: path)
+                let waiters = self.iconWaiters.removeValue(forKey: path)?.values ?? Dictionary<ObjectIdentifier, WeakTileFeedback>().values
+                for waiter in waiters { waiter.value?.objectWillChange.send() }
+            }
+        }
+        job.queuePriority = prewarm ? .low : .veryHigh
+        iconJobs[path] = job; iconQueue.addOperation(job)
+        return Self.pendingIcon
     }
 
     /// Synchronous entry retained for deterministic imports/tests. UI presentation uses requestRefresh.
@@ -239,10 +291,17 @@ final class LauncherModel: ObservableObject {
         catalogRefresh?.cancel()
         applySnapshot(catalog.snapshot(preferredLanguages: applicationNamingLanguages), resetSearch: resetSearch)
         completedRefreshGeneration = refreshGeneration
+        refreshInFlight = false; lastCompletedScan = ProcessInfo.processInfo.systemUptime
     }
-    func requestRefresh(resetSearch: Bool = true) {
+    @discardableResult
+    func requestRefresh(resetSearch: Bool = true, minimumInterval: TimeInterval = 0) -> Bool {
         if resetSearch { resetBrowsingState() }
+        if minimumInterval > 0 {
+            if refreshInFlight { return false }
+            if hasTrustedInventory, let lastCompletedScan, ProcessInfo.processInfo.systemUptime - lastCompletedScan < minimumInterval { return false }
+        }
         refreshGeneration &+= 1
+        refreshInFlight = true
         let generation = refreshGeneration
         catalogRefresh?.cancel()
         let catalog = catalog
@@ -258,7 +317,10 @@ final class LauncherModel: ObservableObject {
             }
             self.applySnapshot(snapshot, resetSearch: false)
             self.completedRefreshGeneration = generation
+            self.refreshInFlight = false
+            self.lastCompletedScan = ProcessInfo.processInfo.systemUptime
         }
+        return true
     }
     func waitForCatalogRefresh() async { await catalogRefresh?.value }
     private func resetBrowsingState() {
@@ -287,8 +349,11 @@ final class LauncherModel: ObservableObject {
             cachedContainerItems = nil
         }
         if imagesChanged {
+            iconQueue.cancelAllOperations(); iconJobs.removeAll(); iconTokens.removeAll()
+            iconWaiters = iconWaiters.filter { snapshot.iconVersions[$0.key] != nil }
             icons = icons.filter { snapshot.iconVersions[$0.key] != nil && snapshot.iconVersions[$0.key] == iconVersions[$0.key] }
             iconVersions = snapshot.iconVersions
+            for feedback in tileFeedback.values { feedback.objectWillChange.send() }
             // Same-path application updates still invalidate visible native icon identities.
             if !inventoryChanged { objectWillChange.send() }
             iconWarmup?.cancel()
@@ -300,7 +365,7 @@ final class LauncherModel: ObservableObject {
                         try? await Task.sleep(for: .milliseconds(16))
                         guard !Task.isCancelled else { return }
                     }
-                    _ = self.icon(for: app)
+                    _ = self.icon(for: app, prewarm: true)
                     try? await Task.sleep(for: .milliseconds(8))
                 }
             }
@@ -319,6 +384,14 @@ final class LauncherModel: ObservableObject {
         if resetSearch { resetBrowsingState() }
         else if inventoryChanged { filter() }
         if let startupMessage { message = startupMessage; self.startupMessage = nil }
+        pruneTileFeedback()
+    }
+
+    private func pruneTileFeedback() {
+        let other = layout.otherDisplayLayout?.pages.flatMap { $0 }.map(\.id) ?? []
+        let valid = Set(layout.allItems.map(\.id) + other + categorizedLayout.allItems.map(\.id) + apps.map { "app:" + $0.id })
+        tileFeedback = tileFeedback.filter { valid.contains($0.key) || $0.key == draggingID }
+        iconWaiters = iconWaiters.mapValues { $0.filter { $0.value.value != nil } }
     }
 
     private func filter() {
@@ -570,11 +643,10 @@ final class LauncherModel: ObservableObject {
         return try LayoutStore.encode(backup)
     }
     func ensureInventoryForImport() async throws {
-        if !hasTrustedInventory {
-            requestRefresh(resetSearch: false)
-            while completedRefreshGeneration < refreshGeneration {
-                try await Task.sleep(for: .milliseconds(20))
-            }
+        // Import matching must not use the panel-open throttle's stale inventory.
+        requestRefresh(resetSearch: false)
+        while completedRefreshGeneration < refreshGeneration {
+            try await Task.sleep(for: .milliseconds(20))
         }
         try Task.checkCancellation()
         guard hasTrustedInventory else { throw LayoutError.inventoryUnavailable }
@@ -617,7 +689,7 @@ final class LauncherModel: ObservableObject {
     @discardableResult
     private func commit(_ candidate: LauncherLayout) -> Bool {
         guard canWriteLayout else { message = "原布局文件尚未安全备份，已停止覆盖写入。"; return false }
-        do { try store.save(candidate); layout = candidate; return true }
+        do { try store.save(candidate); layout = candidate; pruneTileFeedback(); return true }
         catch { message = "无法保存布局：\(error.localizedDescription)"; return false }
     }
 }

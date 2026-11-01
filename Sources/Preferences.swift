@@ -1,6 +1,34 @@
 import Foundation
 import CoreGraphics
 
+struct PreferenceChanges: OptionSet {
+    let rawValue: Int
+    static let appearance = Self(rawValue: 1 << 0)
+    static let menus = Self(rawValue: 1 << 1)
+    static let entry = Self(rawValue: 1 << 2)
+    static let window = Self(rawValue: 1 << 3)
+    static let frame = Self(rawValue: 1 << 4)
+    static let navigation = Self(rawValue: 1 << 5)
+    static let deferredSave = Self(rawValue: 1 << 6)
+    init(rawValue: Int) { self.rawValue = rawValue }
+    init(from old: LauncherPreferences, to new: LauncherPreferences) {
+        self = []
+        if old.appearance != new.appearance { insert(.appearance) }
+        if old.language != new.language || old.entryLocation != new.entryLocation { insert(.menus) }
+        if old.entryLocation != new.entryLocation { insert(.entry) }
+        if old.pinToDesktop != new.pinToDesktop || old.dismissStyle != new.dismissStyle || old.windowShadowEnabled != new.windowShadowEnabled || old.dockVisibility != new.dockVisibility { insert(.window) }
+        if old.dockVisibility != new.dockVisibility { insert(.frame) }
+        if old.navigationStyle != new.navigationStyle || old.pagingDirection != new.pagingDirection || old.reversePaging != new.reversePaging || old.swipeEnabled != new.swipeEnabled || old.arrangement != new.arrangement || old.compactArrangement != new.compactArrangement || old.automaticCategories != new.automaticCategories { insert(.navigation) }
+        var continuous = new
+        continuous.backgroundTransparency = old.backgroundTransparency
+        continuous.iconScalePercent = old.iconScalePercent; continuous.textScalePercent = old.textScalePercent
+        continuous.brandIconPercent = old.brandIconPercent; continuous.brandNamePercent = old.brandNamePercent
+        continuous.gestureSensitivity = old.gestureSensitivity; continuous.soundVolume = old.soundVolume
+        continuous.labelColorHex = old.labelColorHex
+        if continuous == old && new != old { insert(.deferredSave) }
+    }
+}
+
 enum LauncherAppearance: String, Codable, CaseIterable {
     case system, light, dark
     var title: String {
@@ -246,9 +274,10 @@ enum LauncherGeometry {
         let target = (targetColumn / columns) * blockSize + targetRow * columns + targetColumn % columns
         return (0..<itemCount).contains(target) ? target : index
     }
+    static func contentInset(fullscreen: Bool) -> CGFloat { fullscreen ? 32 : 24 }
     static let gridSpacing: CGFloat = 8
     static func gridWidth(displayWidth: CGFloat, fullscreen: Bool) -> CGFloat {
-        fullscreen ? max(1, displayWidth - 80) : max(1, min(displayWidth - 48, 768))
+        max(1, fullscreen ? displayWidth - 2 * contentInset(fullscreen: true) : min(displayWidth - 2 * contentInset(fullscreen: false), 768))
     }
     static func columnCount(displayWidth: CGFloat, fullscreen: Bool) -> Int {
         fullscreen ? max(6, Int(gridWidth(displayWidth: displayWidth, fullscreen: true) / 128)) : 6
@@ -311,11 +340,11 @@ enum FreePlacementGeometry {
     }
 }
 
-// Compact support: adjacent icons grow continuously, with no change to hit targets.
+// Only the original icon bounds respond; the space between icons stays neutral.
 enum DockMagnificationCurve {
     static func scale(dx: CGFloat, dy: CGFloat, size: CGSize) -> CGFloat {
         guard size.width > 0, size.height > 0 else { return 1 }
-        let distance = hypot(dx / (size.width * 3), dy / (size.height * 1.3))
+        let distance = max(abs(dx) / (size.width / 2), abs(dy) / (size.height / 2))
         guard distance < 1 else { return 1 }
         let influence = cos(distance * .pi / 2)
         return 1 + 0.38 * influence * influence

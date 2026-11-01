@@ -3,6 +3,7 @@ import Carbon
 import SwiftUI
 import QuartzCore
 import UniformTypeIdentifiers
+import Darwin
 
 final class LauncherPanel: NSPanel {
     override var canBecomeKey: Bool { true }
@@ -45,6 +46,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var presentingSystemDialog = false
     private var importTask: Task<Void, Never>?
     private var importControl: LegacyReadControl?
+    private var terminationSignal: DispatchSourceSignal?
     private var minimizingWindow = false
     private var updatingEntryVisibility = false
     private var pageGesture = PageGesture()
@@ -55,6 +57,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var pagingToken = UUID()
     private var gestureEndWork: DispatchWorkItem?
     private let preview = CommandLine.arguments.contains("--preview")
+    private var runtimeDefaults: UserDefaults {
+        if let index = CommandLine.arguments.firstIndex(of: "--layout-file"), CommandLine.arguments.indices.contains(index + 1) {
+            let name = URL(fileURLWithPath: CommandLine.arguments[index + 1]).lastPathComponent
+            return UserDefaults(suiteName: "local.aplo.qa." + name)!
+        }
+        return .standard
+    }
 
     private func trace(_ message: String) {
         if CommandLine.arguments.contains("--diagnostics") {
@@ -63,9 +72,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Local upgrades use SIGTERM. Route it through AppKit so debounced
+        // preferences and the final window position are flushed before exit.
+        signal(SIGTERM, SIG_IGN)
+        let termination = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
+        termination.setEventHandler { MainActor.assumeIsolated { NSApp.terminate(nil) } }
+        termination.resume(); terminationSignal = termination
         NSApp.setActivationPolicy(model.preferences.entryLocation.showsInDock ? .regular : .accessory)
         trace("started")
-        model.isFullscreen = UserDefaults.standard.object(forKey: "fullscreenMode") as? Bool ?? true
+        model.isFullscreen = runtimeDefaults.object(forKey: "fullscreenMode") as? Bool ?? true
         if CommandLine.arguments.contains("--compact") { model.isFullscreen = false }
         if CommandLine.arguments.contains("--fullscreen") { model.isFullscreen = true }
         configurePanel()
@@ -77,6 +92,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         configureActions()
         registerHotKey()
         applyAppearance()
+        model.requestRefresh(resetSearch: false, minimumInterval: 20)
         if preview || CommandLine.arguments.contains("--show") { showPanel() }
     }
 
@@ -134,6 +150,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let open = NSMenuItem(title: model.text("打开面板"), action: #selector(openFromMenu), keyEquivalent: "")
         open.target = self
         menu.addItem(open)
+        let refresh = NSMenuItem(title: model.text("刷新应用列表"), action: #selector(refreshApplications), keyEquivalent: "r")
+        refresh.target = self
+        menu.addItem(refresh)
         let displayMode = NSMenuItem(title: model.text("切换全屏 / 小面板"), action: #selector(toggleDisplayMode), keyEquivalent: "f")
         displayMode.keyEquivalentModifierMask = [.control, .command]
         displayMode.target = self
@@ -411,21 +430,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             if abs(delta) == 1 { self.settlePageMotion(explicitDelta: delta) }
             else { self.model.goToPage(target) }
         }
-        model.onPreferencesChanged = { [weak self] in
-            self?.applyAppearance()
-            if let self { self.panel.hasShadow = self.model.preferences.windowShadowEnabled }
-            self?.resetPageMotion()
-            self?.configureMainMenu()
-            if let self {
+        model.onPreferencesChanged = { [weak self] changes in
+            guard let self else { return }
+            if changes.contains(.appearance) { self.applyAppearance() }
+            if changes.contains(.navigation) {
+                self.resetPageMotion()
                 self.model.pageMotion.axis = self.model.preferences.pagingDirection == .vertical ? .vertical : .horizontal
+            }
+            if changes.contains(.menus) {
+                self.configureMainMenu()
                 self.updateStatusMenu()
-                self.applyEntryVisibility()
+            }
+            if changes.contains(.entry) { self.applyEntryVisibility() }
+            if changes.contains(.window) {
+                self.panel.hasShadow = self.model.preferences.windowShadowEnabled
                 self.panel.hidesOnDeactivate = !self.preview && !self.updatingEntryVisibility && self.model.preferences.dismissStyle == .outsideClick && !self.model.presentingAppearancePreview
                 self.panel.level = self.model.preferences.pinToDesktop ? .normal : .floating
                 self.panel.collectionBehavior = self.model.preferences.pinToDesktop ? [.fullScreenAuxiliary] : [.moveToActiveSpace, .fullScreenAuxiliary]
                 self.updatePresentation()
-                self.applyDisplayFrame(screen: self.panel.screen ?? NSScreen.main)
             }
+            if changes.contains(.frame) { self.applyDisplayFrame(screen: self.panel.screen ?? NSScreen.main) }
         }
         model.onMinimize = { [weak self] in
             guard let self else { return }
@@ -449,8 +473,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             guard let self, !self.model.isFullscreen, let screen = self.panel.screen ?? NSScreen.main else { return }
             self.positionSaveWork?.cancel()
             self.placementStore.reset(screenID: self.screenIdentifier(screen))
+            let frame = LauncherGeometry.compactFrame(in: screen.visibleFrame)
+            guard self.panel.frame != frame else { return }
             self.applyingDisplayFrame = true
-            self.panel.setFrame(LauncherGeometry.compactFrame(in: screen.visibleFrame), display: true)
+            self.panel.setFrame(frame, display: true)
             self.applyingDisplayFrame = false
         }
         model.onDisplayModeRequested = { [weak self] in self?.toggleDisplayMode() }
@@ -520,6 +546,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     @objc private func openFromMenu() { showPanel() }
+    @objc private func refreshApplications() { model.requestRefresh(resetSearch: false) }
     @objc private func openSettingsFromMenu() { showPanel(); model.openSettings() }
     @objc private func quitApplication() { NSApp.terminate(nil) }
 
@@ -533,7 +560,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         saveCompactPosition()
         resetPageMotion()
         model.isFullscreen.toggle()
-        UserDefaults.standard.set(model.isFullscreen, forKey: "fullscreenMode")
+        runtimeDefaults.set(model.isFullscreen, forKey: "fullscreenMode")
         if !model.isFullscreen { restorePresentation() }
         if panel.isVisible {
             applyDisplayFrame(screen: panel.screen ?? NSScreen.main)
@@ -553,7 +580,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 frame = CompactWindowPlacementStore.clamped(panel.frame, in: screen.visibleFrame)
             } else { frame = saved }
         }
-        model.displayWidth = frame.width
+        if model.displayWidth != frame.width { model.displayWidth = frame.width }
+        guard panel.frame != frame else { return }
         positionSaveWork?.cancel()
         applyingDisplayFrame = true
         panel.setFrame(frame, display: true)
@@ -609,7 +637,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         if !preservingMessage {
             model.message = model.shortcutAvailable ? nil : "快捷键可能已被其他应用占用，请从菜单栏打开面板。"
         }
-        model.requestRefresh()
+        model.requestRefresh(minimumInterval: 20)
         let point = NSEvent.mouseLocation
         let pointerScreen = NSScreen.screens.first(where: { $0.frame.contains(point) }) ?? NSScreen.main
         let screen = model.preferences.pinToDesktop ? panel.screen ?? pointerScreen : pointerScreen
@@ -793,6 +821,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        trace("terminate flushing preferences")
+        model.flushPreferences()
         importTask?.cancel(); importControl?.cancel()
         saveCompactPosition()
         positionSaveWork?.cancel()

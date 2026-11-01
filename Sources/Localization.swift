@@ -1,7 +1,13 @@
 import Foundation
 
 enum AppStrings {
+    private final class TranslationCache: @unchecked Sendable {
+        let values = NSCache<NSString, NSString>()
+        init() { values.countLimit = 2048 }
+    }
+    private static let cache = TranslationCache()
     static let english: [String: String] = [
+        "刷新应用列表": "Refresh Applications",
         "应用名称样式": "Application Labels", "字体": "Font", "系统字体": "System font", "字重": "Weight",
         "细体": "Light", "常规": "Regular", "中等": "Medium", "半粗体": "Semibold", "粗体": "Bold",
         "文字颜色": "Text color", "自动": "Automatic", "白色": "White", "黑色": "Black", "自定义": "Custom", "自定义颜色": "Custom color",
@@ -62,6 +68,7 @@ enum AppStrings {
         "顶部标识": "Header Identity", "顶部图标大小": "Header icon size", "顶部名称大小": "Header name size",
         "重置窗口位置": "Reset window position", "拖动顶部移动窗口": "Drag the header to move the window",
         "小窗口可拖动顶部移动，按屏幕记住位置。": "Drag the compact window by its header. Position is remembered per display.",
+        "仅调整顶部 Aplo 名称，不改变应用网格大小。": "Adjust only the Aplo heading, without changing the app grid.",
         "仅调整顶部 Aplo 图标和名称，不改变应用网格大小。": "Adjusts only the Aplo header icon and name, leaving the app grid unchanged.",
         "空格": "Space", "回车": "Return", "应用": "App",
         "切换全屏 / 小面板 · ⌃⌘F": "Switch fullscreen / compact · ⌃⌘F",
@@ -277,8 +284,16 @@ enum AppStrings {
     ]
     private static let keys = english.keys.sorted { $0.count > $1.count }
     static func text(_ source: String, language: LauncherLanguage) -> String {
-        if language.usesTraditionalChinese { return source.applyingTransform(StringTransform("Simplified-Traditional"), reverse: false) ?? source }
-        guard language.isEnglish else { return source }
+        let traditional = language.usesTraditionalChinese
+        guard traditional || language.isEnglish else { return source }
+        let key = ((traditional ? "zh-Hant:" : "en:") + source) as NSString
+        if let value = cache.values.object(forKey: key) { return value as String }
+        let result = translate(source, traditional: traditional)
+        cache.values.setObject(result as NSString, forKey: key)
+        return result
+    }
+    private static func translate(_ source: String, traditional: Bool) -> String {
+        if traditional { return source.applyingTransform(StringTransform("Simplified-Traditional"), reverse: false) ?? source }
         if let result = english[source] { return result }
         var result = source
         for key in keys where result.contains(key) { result = result.replacingOccurrences(of: key, with: english[key]!) }

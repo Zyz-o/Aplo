@@ -1,7 +1,13 @@
+#if SWIFT_PACKAGE
+@testable import Aplo
+#endif
 import AppKit
 import Foundation
 
-@main struct ClassificationTests {
+#if !SWIFT_PACKAGE
+@main
+#endif
+ struct ClassificationTests {
     @MainActor static func main() throws {
         var count = 0
         func expect(_ value: Bool, _ text: String) {

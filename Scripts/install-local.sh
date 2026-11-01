@@ -18,6 +18,7 @@ for path in installed:
     assert info(path).get('CFBundleIdentifier') == identity, 'Refusing to replace an unrelated app: ' + str(path)
     shutil.copytree(path, backup / (path.name + '.backup'))
 layout = Path.home() / 'Library/Application Support/简启/layout.json'
+archive = layout.parent / 'Backups'
 if layout.exists():
     shutil.copy2(layout, backup / 'layout.json')
     archive = layout.parent / 'Backups'
@@ -35,6 +36,13 @@ for _ in range(50):
     if not any(len(r.strip().split(None, 1)) == 2 and r.strip().split(None, 1)[1] in executables for r in rows): break
     time.sleep(0.1)
 else: raise RuntimeError('Existing Aplo did not exit; no files were replaced')
+# Capture final state after the app flushes debounced preferences and window position.
+if layout.exists():
+    archive.mkdir(exist_ok=True)
+    shutil.copy2(layout, backup / 'layout.json')
+    shutil.copy2(layout, archive / ('Aplo-before-upgrade-' + backup.name + '.json'))
+prefs = subprocess.run(['defaults', 'export', identity, '-'], capture_output=True)
+if prefs.returncode == 0: (backup / 'preferences.plist').write_bytes(prefs.stdout)
 subprocess.run(['ditto', str(built), '/Applications/Aplo.app'], check=True)
 subprocess.run(['codesign', '--verify', '--deep', '--strict', '/Applications/Aplo.app'], check=True)
 old = Path('/Applications/SimpleLauncher.app')

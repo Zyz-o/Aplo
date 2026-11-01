@@ -46,7 +46,7 @@ struct SettingsView: View {
     @State private var category: SettingsCategory = .general
     @State private var legacyExpanded = false
     @State private var scalePreview = false
-    private var version: String { Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "3.11.2" }
+    private var version: String { Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "3.12.1" }
     private var appIcon: NSImage {
         Bundle.main.url(forResource: "AppIcon", withExtension: "icns").flatMap { NSImage(contentsOf: $0) }
             ?? NSImage(systemSymbolName: "square.grid.2x2", accessibilityDescription: nil)!
@@ -241,16 +241,11 @@ struct SettingsView: View {
             }
             card("顶部标识", icon: "app.badge") {
                 HStack {
-                    Text(model.text("顶部图标大小"))
-                    Slider(value: preference(\.brandIconPercent), in: 50...150, step: 5).accessibilityLabel(model.text("顶部图标大小"))
-                    Text("\(Int(model.preferences.brandIconPercent))%").monospacedDigit().frame(width: 45)
-                }
-                HStack {
                     Text(model.text("顶部名称大小"))
                     Slider(value: preference(\.brandNamePercent), in: 70...160, step: 5).accessibilityLabel(model.text("顶部名称大小"))
                     Text("\(Int(model.preferences.brandNamePercent))%").monospacedDigit().frame(width: 45)
                 }
-                note("仅调整顶部 Aplo 图标和名称，不改变应用网格大小。")
+                note("仅调整顶部 Aplo 名称，不改变应用网格大小。")
             }
             card("色盲友好", icon: "eye") {
                 Picker(model.text("界面配色"), selection: preference(\.colorVision)) {

@@ -58,15 +58,24 @@ import QuartzCore
     func register(_ view: MagnificationIconView) { entries[ObjectIdentifier(view)] = Entry(view: view) }
     func unregister(_ view: MagnificationIconView) { entries.removeValue(forKey: ObjectIdentifier(view)) }
     func update(window: NSWindow?, point: NSPoint) {
+        var target: MagnificationIconView?
+        var targetScale: CGFloat = 1
+        for entry in entries.values {
+            guard let view = entry.view, view.window === window, window != nil,
+                  view.enabled, !view.visibleRect.isEmpty else { continue }
+            // Use unscaled layout bounds so magnification cannot expand its own hit area.
+            let rect = view.convert(view.bounds, to: nil)
+            guard rect.contains(point), view.visibleRect.contains(view.convert(point, from: nil)) else { continue }
+            let scale = DockMagnificationCurve.scale(dx: point.x - rect.midX, dy: point.y - rect.midY, size: rect.size)
+            if scale > targetScale { target = view; targetScale = scale }
+        }
         for entry in entries.values {
             guard let view = entry.view else { continue }
-            guard view.window === window, window != nil, view.enabled else { view.setScale(1); continue }
-            guard !view.visibleRect.isEmpty else { view.setScale(1, immediately: true); continue }
-            let rect = view.convert(view.bounds, to: nil)
-            let scale = DockMagnificationCurve.scale(dx: point.x - rect.midX, dy: point.y - rect.midY, size: rect.size)
-            view.setScale(scale)
+            // Reset the previous icon immediately: crossing a gap never leaves two enlarged icons.
+            view.setScale(view === target ? targetScale : 1, immediately: view !== target)
         }
     }
+
     func reset() { pendingWindow = nil; for entry in entries.values { entry.view?.setScale(1) } }
 }
 
@@ -134,7 +143,8 @@ struct IconRenderIdentity: Equatable {
     let children: [String]?
     let images: [ObjectIdentifier]
     let size: CGFloat
-    let preferences: LauncherPreferences
+    let colorVision: LauncherColorVision
+    let badgePoints: CGFloat
     let dark: Bool
 }
 struct DockMagnifiedIcon<Content: View>: NSViewRepresentable {

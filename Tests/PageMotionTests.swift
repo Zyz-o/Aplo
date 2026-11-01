@@ -1,7 +1,13 @@
+#if SWIFT_PACKAGE
+@testable import Aplo
+#endif
 import Foundation
 import CoreGraphics
 
-@main struct PageMotionTests {
+#if !SWIFT_PACKAGE
+@main
+#endif
+ struct PageMotionTests {
     static func main() {
         var checks = 0
         func expect(_ result: Bool, _ label: String) { precondition(result, label); checks += 1; print("PASS: " + label) }

@@ -12,7 +12,12 @@ struct SearchMatch {
 
 struct FuzzyMatcher {
     func score(query: String, entry: SearchIndexEntry) -> SearchMatch? {
-        let normalizedQuery = SearchIndexEntry.normalize(query)
+        score(normalizedQuery: SearchIndexEntry.normalize(query), entry: entry)
+    }
+
+    // Aplo addition: callers with a prepared query avoid repeating normalization
+    // for every application alias. The original query entry point stays intact.
+    func score(normalizedQuery: String, entry: SearchIndexEntry) -> SearchMatch? {
         guard !normalizedQuery.isEmpty else { return nil }
 
         if let originalScore = originalScore(query: normalizedQuery, entry: entry) {

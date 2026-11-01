@@ -196,16 +196,16 @@ struct LayoutStore: Sendable {
         catch let error as LayoutError { throw error }
         catch { throw LayoutError.invalidBackup }
     }
-    static func encode(_ layout: LauncherLayout) throws -> Data {
+    static func encode(_ layout: LauncherLayout, prettyPrinted: Bool = true) throws -> Data {
         let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.outputFormatting = prettyPrinted ? [.prettyPrinted, .sortedKeys] : [.sortedKeys]
         let data = try encoder.encode(layout)
         guard data.count <= maximumBytes else { throw LayoutError.tooLarge }
         return data
     }
     func save(_ layout: LauncherLayout) throws {
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try Self.encode(layout).write(to: url, options: .atomic)
+        try Self.encode(layout, prettyPrinted: false).write(to: url, options: .atomic)
         try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
     }
     @discardableResult

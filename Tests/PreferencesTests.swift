@@ -1,7 +1,13 @@
+#if SWIFT_PACKAGE
+@testable import Aplo
+#endif
 import Foundation
 import CoreGraphics
 
-@main struct PreferencesTests {
+#if !SWIFT_PACKAGE
+@main
+#endif
+ struct PreferencesTests {
     static func main() throws {
         let domain = "local.aplo.preferences-test." + UUID().uuidString
         let defaults = UserDefaults(suiteName: domain)!
@@ -52,8 +58,8 @@ import CoreGraphics
         expect(LauncherGeometry.tileWidth(displayWidth: 960, fullscreen: false) > LauncherGeometry.tileWidth(displayWidth: 640, fullscreen: false), "drag targeting follows the actual enlarged grid width")
         let fullColumns = LauncherGeometry.columnCount(displayWidth: 1512, fullscreen: true)
         expect(fullColumns == 11, "fullscreen adds columns to retain compact icon spacing across the display")
-        expect(abs(LauncherGeometry.tileWidth(displayWidth: 1512, fullscreen: true) * CGFloat(fullColumns) + CGFloat(fullColumns - 1) * LauncherGeometry.gridSpacing - 1432) < 0.001, "fullscreen drag targets span the available display width")
-        expect(LauncherGeometry.gridWidth(displayWidth: 2560, fullscreen: true) == 2480, "large external displays do not inherit the compact width cap")
+        expect(abs(LauncherGeometry.tileWidth(displayWidth: 1512, fullscreen: true) * CGFloat(fullColumns) + CGFloat(fullColumns - 1) * LauncherGeometry.gridSpacing - 1448) < 0.001, "fullscreen drag targets span the available display width")
+        expect(LauncherGeometry.gridWidth(displayWidth: 2560, fullscreen: true) == 2496, "large external displays do not inherit the compact width cap")
         expect(LauncherGeometry.columnCount(displayWidth: 960, fullscreen: false) == 6, "compact mode retains the regular six-column grid")
         let wideSlots = LauncherGeometry.horizontalSlots(itemCount: 102, rows: 5, columns: 11).filter { $0 < 102 }
         expect(Set(wideSlots).count == 102 && wideSlots.count == 102, "wide horizontal grids include each application exactly once")
@@ -162,9 +168,9 @@ import CoreGraphics
         expect(store.load().labelColorHex == "#FFFFFF", "invalid custom label colors safely fall back")
         let icon = CGSize(width: 72, height: 72)
         expect(abs(DockMagnificationCurve.scale(dx: 0, dy: 0, size: icon) - 1.38) < 0.0001, "the pointed icon reaches the configured magnification peak")
-        expect(DockMagnificationCurve.scale(dx: 130, dy: 0, size: icon) > 1 && DockMagnificationCurve.scale(dx: 130, dy: 0, size: icon) < 1.38, "neighbor icons grow smoothly by distance")
+        expect(DockMagnificationCurve.scale(dx: 36, dy: 0, size: icon) == 1 && DockMagnificationCurve.scale(dx: 45, dy: 0, size: icon) == 1, "icon boundaries and gaps never magnify neighbors")
         expect(DockMagnificationCurve.scale(dx: 220, dy: 0, size: icon) == 1 && DockMagnificationCurve.scale(dx: 0, dy: 150, size: icon) == 1, "distant icons and separate rows retain their normal scale")
-        expect(DockMagnificationCurve.scale(dx: -50, dy: 0, size: icon) == DockMagnificationCurve.scale(dx: 50, dy: 0, size: icon), "magnification is symmetric when moving left or right")
+        expect(DockMagnificationCurve.scale(dx: -18, dy: 0, size: icon) == DockMagnificationCurve.scale(dx: 18, dy: 0, size: icon), "magnification is symmetric when moving left or right")
         print("All 78 preference, compatibility and window geometry checks passed.")
     }
 }

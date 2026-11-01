@@ -1,10 +1,16 @@
+#if SWIFT_PACKAGE
+@testable import Aplo
+#endif
 import AppKit
 import Carbon
 import Foundation
 import Combine
 import SQLite3
 
+#if !SWIFT_PACKAGE
 @main
+#endif
+
 struct LayoutTests {
     @MainActor
     static func main() async throws {

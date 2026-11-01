@@ -54,12 +54,14 @@ struct NativeDragHandle: NSViewRepresentable {
         view.iconSize = min(model.preferences.iconPoints(fullscreen: model.isFullscreen), max(24, LauncherGeometry.tileWidth(displayWidth: model.displayWidth, fullscreen: model.isFullscreen) - 18))
         view.itemID = item.id
         view.click = click
-        if let appID = item.appID, let app = model.app(for: appID) {
-            view.icon = model.icon(for: app); view.folderImages = []
-        } else {
-            view.icon = nil
-            view.folderImages = item.children.prefix(9).compactMap { model.app(for: $0) }.map { model.icon(for: $0) }
+        view.resolveIconResources = { [weak model] in
+            guard let model else { return (nil, []) }
+            if let appID = item.appID, let app = model.app(for: appID) {
+                return (model.icon(for: app), [])
+            }
+            return (nil, item.children.prefix(9).compactMap { model.app(for: $0) }.map { model.icon(for: $0) })
         }
+        view.refreshIconResources()
     }
 }
 
@@ -68,6 +70,11 @@ final class DragSourceView: NSView, NSDraggingSource {
     var itemID = ""
     var icon: NSImage?
     var folderImages: [NSImage] = []
+    var resolveIconResources: (() -> (NSImage?, [NSImage]))?
+    func refreshIconResources() {
+        guard let resolveIconResources else { return }
+        (icon, folderImages) = resolveIconResources()
+    }
     var iconSize: CGFloat = 50
     var click: (() -> Void)?
     private var start: NSPoint?
@@ -87,6 +94,9 @@ final class DragSourceView: NSView, NSDraggingSource {
         guard hypot(point.x - start.x, point.y - start.y) >= 3 else { return }
         didDrag = true
         model.beginInteractiveDrag(itemID)
+        // Read the latest asynchronous result at drag start; the hit-test overlay
+        // may still hold a placeholder from its previous SwiftUI update.
+        refreshIconResources()
         let pasteboard = NSPasteboardItem()
         pasteboard.setString(itemID, forType: NSPasteboard.PasteboardType(launcherDragType.identifier))
         let draggingItem = NSDraggingItem(pasteboardWriter: pasteboard)

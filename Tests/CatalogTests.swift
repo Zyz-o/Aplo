@@ -1,8 +1,14 @@
+#if SWIFT_PACKAGE
+@testable import Aplo
+#endif
 import AppKit
 import Foundation
 import Combine
 
+#if !SWIFT_PACKAGE
 @main
+#endif
+
 struct CatalogTests {
     @MainActor
     static func main() async throws {

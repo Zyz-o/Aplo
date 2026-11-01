@@ -45,7 +45,7 @@ struct LauncherView: View {
                     .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(.primary.opacity(0.10))) }
             else { launcherContent }
         }
-        .padding(model.showingSettings ? (model.isFullscreen ? 24 : 0) : model.isFullscreen ? 40 : 24)
+        .padding(model.showingSettings ? (model.isFullscreen ? 24 : 0) : LauncherGeometry.contentInset(fullscreen: model.isFullscreen))
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background {
             ZStack {
@@ -81,7 +81,7 @@ struct LauncherView: View {
 
     private var launcherContent: some View {
         VStack(spacing: 0) {
-            header.frame(maxWidth: model.gridWidth).padding(.bottom, model.isFullscreen ? 24 : 12)
+            header.frame(maxWidth: model.gridWidth).padding(.bottom, 16)
             if model.preferences.toolbarPosition == .top { toolbar.padding(.bottom, 12) }
             MessageBanner(model: model)
             if model.usesFreePlacement { freeContent }
@@ -275,8 +275,6 @@ struct LauncherView: View {
         ZStack {
             WindowDragHandle(enabled: !model.isFullscreen)
             VStack(spacing: 4) {
-                Image(nsImage: LauncherBrand.image).resizable().interpolation(.high)
-                    .frame(width: model.preferences.brandIconPoints, height: model.preferences.brandIconPoints)
                 Text("Aplo").font(.system(size: model.preferences.brandNamePoints, weight: .semibold))
                     .padding(.horizontal, clearBackdrop ? 7 : 0)
                     .foregroundStyle(clearBackdrop ? Color.white : Color.primary)
@@ -317,7 +315,7 @@ struct LauncherView: View {
 
                     .foregroundStyle(clearBackdrop ? Color.white : Color.secondary)
             }.frame(maxHeight: .infinity, alignment: .top).padding(.top, 3)
-        }.frame(height: model.preferences.brandIconPoints + model.preferences.brandNamePoints * 1.3 + 30)
+        }.frame(height: max(44, model.preferences.brandNamePoints * 1.3 + model.preferences.textPoints(11) * 1.3 + 8))
             .help(model.isFullscreen ? model.text("切换小面板") : model.text("拖动顶部移动窗口"))
     }
 
@@ -339,11 +337,12 @@ struct LauncherView: View {
     }
 
     @ViewBuilder private func tile(_ item: LayoutItem, index: Int) -> some View {
-        LauncherTile(model: model, item: item, selected: model.selectedIndex == index) {
+        LauncherTile(model: model, item: item, index: index, selected: model.selectedIndex == index) {
             model.select(index)
             if item.kind == .folder { model.open(item) }
             else if !model.editing, let id = item.appID, let app = model.app(for: id) { launch(app) }
         }
+        .equatable()
         .overlay {
             if model.canBeginIconDrag {
                 NativeDragHandle(model: model, item: item) {
@@ -426,17 +425,48 @@ struct LauncherView: View {
     }
 }
 
-private struct LauncherTile: View {
-    @ObservedObject var model: LauncherModel
+private struct TileAppearanceKey: Equatable, Sendable {
+    let iconSize: CGFloat
+    let labelHeight: CGFloat
+    let textScale: Double
+    let showNames: Bool
+    let font: String
+    let weight: LauncherLabelWeight
+    let color: LauncherLabelColor
+    let colorHex: String
+    let transparentLabels: Bool
+    let vision: LauncherColorVision
+    let magnify: Bool
+    let animate: Bool
+}
+struct LauncherTile: View, Equatable {
+    let model: LauncherModel
     @ObservedObject private var dragFeedback: TileDragFeedback
     let item: LayoutItem
     let selected: Bool
+    let index: Int
+    let displayName: String
+    let accessibilityName: String
+    private let appearance: TileAppearanceKey
+    private let editing: Bool
+    private let draggingID: String?
+    private let freePlacement: Bool
+    private let continuous: Bool
     let action: () -> Void
-    init(model: LauncherModel, item: LayoutItem, selected: Bool, action: @escaping () -> Void) {
-        self.model = model; self.item = item; self.selected = selected; self.action = action
+    init(model: LauncherModel, item: LayoutItem, index: Int, selected: Bool, action: @escaping () -> Void) {
+        self.model = model; self.item = item; self.index = index; self.selected = selected; self.action = action
+        self.displayName = model.name(for: item)
+        self.accessibilityName = model.text((item.kind == .folder ? "打开文件夹 " : "打开 ") + displayName)
+        self.editing = model.editing; self.draggingID = model.draggingID
+        self.freePlacement = model.usesFreePlacement; self.continuous = model.isContinuousScrolling
+        let p = model.preferences
+        self.appearance = TileAppearanceKey(iconSize: min(p.iconPoints(fullscreen: model.isFullscreen), max(24, LauncherGeometry.tileWidth(displayWidth: model.displayWidth, fullscreen: model.isFullscreen) - 18)), labelHeight: p.labelHeight, textScale: p.textScalePercent, showNames: p.showNames, font: p.labelFontFamily, weight: p.labelWeight, color: p.labelColor, colorHex: p.labelColorHex, transparentLabels: p.backgroundTransparency > 0.7, vision: p.colorVision, magnify: p.magnificationEnabled, animate: p.animationsEnabled)
         self.dragFeedback = model.dragFeedback(for: item.id)
     }
-    private var iconSize: CGFloat { min(model.preferences.iconPoints(fullscreen: model.isFullscreen), max(24, LauncherGeometry.tileWidth(displayWidth: model.displayWidth, fullscreen: model.isFullscreen) - 18)) }
+    nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.model === rhs.model && lhs.item == rhs.item && lhs.index == rhs.index && lhs.selected == rhs.selected && lhs.displayName == rhs.displayName && lhs.accessibilityName == rhs.accessibilityName && lhs.appearance == rhs.appearance && lhs.editing == rhs.editing && lhs.draggingID == rhs.draggingID && lhs.freePlacement == rhs.freePlacement && lhs.continuous == rhs.continuous
+    }
+    private var iconSize: CGFloat { appearance.iconSize }
     @State private var hovered = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
@@ -454,13 +484,13 @@ private struct LauncherTile: View {
     }
     private var nativeIcon: NSImage? {
         guard item.kind == .app, previewChildren == nil, let id = item.appID, let app = model.app(for: id) else { return nil }
-        return model.icon(for: app)
+        return model.icon(for: app, notifying: dragFeedback)
     }
     private var iconIdentity: IconRenderIdentity {
         let ids = previewChildren ?? (item.kind == .folder ? item.children : [item.appID].compactMap { $0 })
         return IconRenderIdentity(item: item, children: previewChildren,
-                                  images: ids.prefix(9).compactMap { model.app(for: $0) }.map { ObjectIdentifier(model.icon(for: $0)) },
-                                  size: iconSize, preferences: model.preferences, dark: colorScheme == .dark)
+                                  images: ids.prefix(9).compactMap { model.app(for: $0) }.map { ObjectIdentifier(model.icon(for: $0, notifying: dragFeedback)) },
+                                  size: iconSize, colorVision: model.preferences.colorVision, badgePoints: model.preferences.textPoints(8), dark: colorScheme == .dark)
     }
     var body: some View {
         Button(action: action) {
@@ -477,7 +507,7 @@ private struct LauncherTile: View {
                         LazyVGrid(columns: Array(repeating: GridItem(.fixed(iconSize * 0.23), spacing: 2), count: 3), spacing: 2) {
                             ForEach(Array((previewChildren ?? item.children).prefix(9)), id: \.self) { id in
                                 if let app = model.app(for: id) {
-                                    Image(nsImage: model.icon(for: app)).resizable().interpolation(.high).frame(width: iconSize * 0.23, height: iconSize * 0.23)
+                                    Image(nsImage: model.icon(for: app, notifying: dragFeedback)).resizable().interpolation(.high).frame(width: iconSize * 0.23, height: iconSize * 0.23)
                                 }
                             }
                         }.padding(4)
@@ -488,12 +518,12 @@ private struct LauncherTile: View {
                                 .background(.regularMaterial, in: Capsule()).offset(x: 4, y: 3) }
                         }
                 } else if let id = item.appID, let app = model.app(for: id) {
-                    Image(nsImage: model.icon(for: app)).resizable().interpolation(.high).frame(width: iconSize, height: iconSize)
+                    Image(nsImage: model.icon(for: app, notifying: dragFeedback)).resizable().interpolation(.high).frame(width: iconSize, height: iconSize)
                 }
                 }
                 }.frame(width: iconSize, height: iconSize)
                     .opacity(model.draggingID == item.id && !model.usesFreePlacement ? 0.25 : 1)
-                Text(model.name(for: item)).font(model.applicationLabelFont)
+                Text(displayName).font(model.applicationLabelFont)
                     .foregroundStyle(model.applicationLabelColor)
                     .lineLimit(2).multilineTextAlignment(.center)
                     .padding(.horizontal, clearBackdrop ? 4 : 0)
@@ -505,9 +535,9 @@ private struct LauncherTile: View {
             .contentShape(Rectangle())
         }
         .zIndex(hovered ? 1 : 0)
-        .buttonStyle(LauncherPressStyle(animated: model.preferences.animationsEnabled && !reduceMotion)).onHover { if model.draggingID == nil && !model.editing { hovered = $0 } }.help(model.name(for: item))
+        .buttonStyle(LauncherPressStyle(animated: model.preferences.animationsEnabled && !reduceMotion)).onHover { if model.draggingID == nil && !model.editing { hovered = $0 } }.help(displayName)
         .animation(reduceMotion || model.isContinuousScrolling || !model.preferences.animationsEnabled || model.draggingID != nil ? nil : .easeOut(duration: 0.12), value: hovered)
-        .accessibilityLabel(model.text((item.kind == .folder ? "打开文件夹 " : "打开 ") + model.name(for: item)))
+        .accessibilityLabel(accessibilityName)
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }

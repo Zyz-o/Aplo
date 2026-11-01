@@ -1,3 +1,18 @@
+# 3.12.1 — 2026-11-01
+
+- Remove the central header photo and its size control; retain the Aplo title and existing saved preferences.
+- Isolate hover magnification to one icon’s original bounds. Gaps and adjacent icons remain at normal size.
+- Use consistent 32-point fullscreen / 24-point compact outer margins and a 16-point header gap; share geometry with paging and drag targets.
+
+# 3.12.0 — 2026-11-01
+
+- Diff preference side effects; debounce continuous-value saves and flush them on quit. Avoid redundant frame updates and menu rebuilds.
+- Bound and cache resolved-language translations, reuse tile names, narrow tile inputs and icon render identities, and prune stale drag feedback.
+- Prefetch native icons on a serial worker, prioritize visible requests, and deliver readiness notifications only to affected tiles.
+- Scan once at startup; throttle repeated panel-open scans to 20 seconds. Add an immediate refresh menu entry; imports and failure recovery still force discovery.
+- Normalize search variants once, pre-expand alias entries, and keep compact layout files while preserving readable exports.
+- Use SwiftPM for incremental app builds and XCTest regression suites; make build/test/install/package scripts executable.
+
 # 3.11.2 — 2026-11-01
 
 - Suspend hover magnification during scrolling and resume after motion stops, avoiding repeated geometry traversal and animation replacement during momentum.

@@ -1,6 +1,12 @@
+#if SWIFT_PACKAGE
+@testable import Aplo
+#endif
 import Foundation
 
-@main struct SearchTests {
+#if !SWIFT_PACKAGE
+@main
+#endif
+ struct SearchTests {
     @MainActor static func main() {
         let apps = ["微信", "Google Chrome", "Weixin Tools", "WPS Office", "百度网盘"].enumerated().map {
             InstalledApp(id: "test.\($0.offset)", name: $0.element,
