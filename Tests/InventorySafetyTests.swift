@@ -2,6 +2,10 @@
 import XCTest
 @testable import Aplo
 
+private func prepareSearchOffMain(_ apps: [InstalledApp]) -> (PreparedSearchIndex, Bool) {
+    (IntegratedSearch.prepare(apps, reusing: [:]), Thread.isMainThread)
+}
+
 @MainActor final class InventorySafetyTests: XCTestCase {
     func testColdPartialScanThenOrganizePreservesBothProfiles() throws {
         let fm = FileManager.default
@@ -83,16 +87,12 @@ import XCTest
         XCTAssertTrue(candidate.removedAppIDs(from: original).isEmpty)
     }
 
-    nonisolated private static func prepareOffMain(_ apps: [InstalledApp]) -> (PreparedSearchIndex, Bool) {
-        (IntegratedSearch.prepare(apps, reusing: [:]), Thread.isMainThread)
-    }
-
     func testBackgroundSearchPreparationPreservesRanking() async {
         let apps = [InstalledApp(id: "wx", name: "微信", url: URL(fileURLWithPath: "/wx.app"), bundleIdentifier: nil, searchAliases: ["WeChat"]),
                     InstalledApp(id: "memo", name: "備忘錄", url: URL(fileURLWithPath: "/memo.app"), bundleIdentifier: nil, searchAliases: ["Notes"])]
         let synchronous = IntegratedSearch(); synchronous.update(apps)
-        let (prepared, ranOnMainThread) = await Task.detached {
-            Self.prepareOffMain(apps)
+        let (prepared, ranOnMainThread) = await Task.detached { @Sendable [apps] in
+            prepareSearchOffMain(apps)
         }.value
         XCTAssertFalse(ranOnMainThread)
         let background = IntegratedSearch(); background.install(prepared)

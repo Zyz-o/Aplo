@@ -23,8 +23,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Run checks
-        run: zsh test.sh
+      - name: Run layout, search and installer checks
+        run: ./test.sh
       - name: Build application and package source
         shell: bash
         run: |
