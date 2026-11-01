@@ -34,7 +34,11 @@ import XCTest
         XCTAssertEqual(changes.count, 100)
         XCTAssertTrue(changes.allSatisfy { $0 == .deferredSave })
         XCTAssertNil(defaults.data(forKey: "aplo.preferences.v1"))
-        try await Task.sleep(for: .milliseconds(260))
+        // Debounce is a minimum delay, not a scheduling deadline on busy CI runners.
+        for _ in 0..<100 {
+            if defaults.data(forKey: "aplo.preferences.v1") != nil { break }
+            try await Task.sleep(for: .milliseconds(20))
+        }
         XCTAssertEqual(PreferencesStore(defaults: defaults).load(), model.preferences)
         model.updatePreferences { $0.textScalePercent = 123 }
         model.flushPreferences()
