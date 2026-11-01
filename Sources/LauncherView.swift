@@ -143,7 +143,7 @@ struct LauncherView: View {
                         } label: { Image(systemName: model.searchExpanded ? "xmark" : "magnifyingglass").frame(width: 34, height: 34) }
                             .buttonStyle(.plain).accessibilityLabel(model.text("搜索应用"))
                         if model.searchExpanded { search.frame(maxWidth: 290) }
-                        else { Text(model.text("\(model.apps.count) 个应用")) }
+                        else { Text(model.text("\(model.visibleApplicationCount) 个应用")) }
                     }.frame(maxWidth: .infinity, alignment: .leading)
                     Spacer(minLength: 48)
                     arrangementControls.frame(maxWidth: .infinity, alignment: .trailing)
@@ -173,21 +173,23 @@ struct LauncherView: View {
             let canvas = CGSize(width: vertical ? model.gridWidth : max(viewport.size.width, CGFloat((count + rows - 1) / rows) * (tileWidth + LauncherGeometry.gridSpacing)),
                                 height: vertical ? max(viewport.size.height, CGFloat((count + model.columnCount - 1) / model.columnCount) * (tileHeight + LauncherGeometry.gridSpacing)) : viewport.size.height)
             let tileSize = CGSize(width: tileWidth, height: tileHeight)
-            ScrollView(vertical ? .vertical : .horizontal) {
-                let entries = Array(model.containerItems.enumerated()).map { index, item in
+            let entries = Array(model.containerItems.enumerated()).map { index, item in
                     let column = vertical ? index % model.columnCount : index / rows
                     let row = vertical ? index / model.columnCount : index % rows
                     let fallback = CGPoint(x: CGFloat(column) * (tileWidth + LauncherGeometry.gridSpacing), y: CGFloat(row) * (tileHeight + LauncherGeometry.gridSpacing))
                     let origin = FreePlacementGeometry.origin(position: model.layout.freePositions?[model.freePositionKey(item.id)], fallback: fallback, canvas: canvas, tile: tileSize)
                     return FreeCanvasEntry(item: item, index: index, origin: origin)
                 }
+            ScrollView(vertical ? .vertical : .horizontal) {
                 CulledFreeCanvas(entries: entries, canvas: canvas, viewport: viewport.size, tileSize: tileSize, draggedID: model.draggingID,
+                    selectedID: model.keyboardSelectionActive ? model.selectedItem?.id : nil, revealGeneration: model.keyboardNavigationGeneration,
                     begin: { model.beginFreeDrag($0) }, end: { model.endDrag() },
                     save: { id, point in model.setFreePosition(id, x: point.x, y: point.y) }) { entry in tile(entry.item, index: entry.index) }
                     .allowsHitTesting(!model.importInProgress)
             }.coordinateSpace(name: "free-viewport")
             .id("free-\(model.isFullscreen)-\(model.openFolderID ?? "root")-\(model.preferences.pagingDirection)")
-            .onAppear { model.horizontalRowCount = rows }
+            .onAppear { model.horizontalRowCount = rows; model.updateFreeFrames(Dictionary(uniqueKeysWithValues: entries.map { ($0.id, CGRect(origin: $0.origin, size: tileSize)) })) }
+            .onChange(of: entries) { entries in model.updateFreeFrames(Dictionary(uniqueKeysWithValues: entries.map { ($0.id, CGRect(origin: $0.origin, size: tileSize)) })) }
             .onChange(of: rows) { model.horizontalRowCount = $0 }
         }
     }
@@ -279,7 +281,7 @@ struct LauncherView: View {
                     .padding(.horizontal, clearBackdrop ? 7 : 0)
                     .foregroundStyle(clearBackdrop ? Color.white : Color.primary)
 
-                Text(model.text(model.isContinuousScrolling ? "\(model.apps.count) 个应用 · 连续滚动" : "\(model.apps.count) 个应用 · \(model.browsingLayout.pages.count) 页"))
+                Text(model.text(model.isContinuousScrolling ? "\(model.visibleApplicationCount) 个应用 · 连续滚动" : "\(model.visibleApplicationCount) 个应用 · \(model.browsingLayout.pages.count) 页"))
                     .font(.system(size: model.preferences.textPoints(11))).foregroundStyle(.secondary)
             }.allowsHitTesting(false)
             HStack(alignment: .top) {
@@ -380,6 +382,10 @@ struct LauncherView: View {
                     }
                 }
             }
+            if let appID = item.appID {
+                Divider()
+                Button(model.text("隐藏应用")) { model.setAppHidden(appID, hidden: true) }
+            }
         }
     }
 
@@ -444,6 +450,7 @@ struct LauncherTile: View, Equatable {
     @ObservedObject private var dragFeedback: TileDragFeedback
     let item: LayoutItem
     let selected: Bool
+    let keyboardSelected: Bool
     let index: Int
     let displayName: String
     let accessibilityName: String
@@ -454,7 +461,7 @@ struct LauncherTile: View, Equatable {
     private let continuous: Bool
     let action: () -> Void
     init(model: LauncherModel, item: LayoutItem, index: Int, selected: Bool, action: @escaping () -> Void) {
-        self.model = model; self.item = item; self.index = index; self.selected = selected; self.action = action
+        self.model = model; self.item = item; self.index = index; self.selected = selected; self.keyboardSelected = selected && model.keyboardSelectionActive; self.action = action
         self.displayName = model.name(for: item)
         self.accessibilityName = model.text((item.kind == .folder ? "打开文件夹 " : "打开 ") + displayName)
         self.editing = model.editing; self.draggingID = model.draggingID
@@ -464,7 +471,7 @@ struct LauncherTile: View, Equatable {
         self.dragFeedback = model.dragFeedback(for: item.id)
     }
     nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
-        lhs.model === rhs.model && lhs.item == rhs.item && lhs.index == rhs.index && lhs.selected == rhs.selected && lhs.displayName == rhs.displayName && lhs.accessibilityName == rhs.accessibilityName && lhs.appearance == rhs.appearance && lhs.editing == rhs.editing && lhs.draggingID == rhs.draggingID && lhs.freePlacement == rhs.freePlacement && lhs.continuous == rhs.continuous
+        lhs.model === rhs.model && lhs.item == rhs.item && lhs.index == rhs.index && lhs.selected == rhs.selected && lhs.keyboardSelected == rhs.keyboardSelected && lhs.displayName == rhs.displayName && lhs.accessibilityName == rhs.accessibilityName && lhs.appearance == rhs.appearance && lhs.editing == rhs.editing && lhs.draggingID == rhs.draggingID && lhs.freePlacement == rhs.freePlacement && lhs.continuous == rhs.continuous
     }
     private var iconSize: CGFloat { appearance.iconSize }
     @State private var hovered = false
@@ -537,6 +544,12 @@ struct LauncherTile: View, Equatable {
         .zIndex(hovered ? 1 : 0)
         .buttonStyle(LauncherPressStyle(animated: model.preferences.animationsEnabled && !reduceMotion)).onHover { if model.draggingID == nil && !model.editing { hovered = $0 } }.help(displayName)
         .animation(reduceMotion || model.isContinuousScrolling || !model.preferences.animationsEnabled || model.draggingID != nil ? nil : .easeOut(duration: 0.12), value: hovered)
+        .overlay {
+            if keyboardSelected {
+                RoundedRectangle(cornerRadius: 14).strokeBorder(model.accentColor.opacity(0.65), lineWidth: 1.5)
+                    .padding(3).allowsHitTesting(false)
+            }
+        }
         .accessibilityLabel(accessibilityName)
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
@@ -661,6 +674,7 @@ struct NativeInput: NSViewRepresentable {
                 coordinator.generation = expectedGeneration
                 (field as? LauncherTextField)?.pendingFocus = nil
                 if let editor = field.currentEditor() {
+                    (editor as? NSTextView)?.allowsUndo = true
                     editor.selectedRange = selectAll ? NSRange(location: 0, length: field.stringValue.utf16.count)
                         : NSRange(location: field.stringValue.utf16.count, length: 0)
                 }
@@ -706,7 +720,7 @@ private struct PageInteractionLock<Content: View>: View {
 }
 
 
-private struct FreeCanvasEntry: Identifiable {
+private struct FreeCanvasEntry: Identifiable, Equatable {
     let item: LayoutItem
     let index: Int
     let origin: CGPoint
@@ -720,11 +734,20 @@ private final class CanvasScrollObservation: @unchecked Sendable {
 }
 private struct CanvasViewportMonitor: NSViewRepresentable {
     let tileSize: CGSize
+    let revealRect: CGRect?
+    let revealGeneration: Int
     let changed: (CGRect) -> Void
     func makeNSView(context: Context) -> CanvasViewportView { CanvasViewportView() }
-    func updateNSView(_ view: CanvasViewportView, context: Context) { view.changed = changed; view.tileSize = tileSize }
+    func updateNSView(_ view: CanvasViewportView, context: Context) {
+        view.changed = changed; view.tileSize = tileSize
+        if view.revealGeneration != revealGeneration {
+            view.revealGeneration = revealGeneration
+            if let revealRect { DispatchQueue.main.async { [weak view] in _ = view?.scrollToVisible(revealRect.insetBy(dx: -8, dy: -8)) } }
+        }
+    }
 }
 private final class CanvasViewportView: NSView {
+    var revealGeneration = -1
     var tileSize = CGSize(width: 100, height: 100)
     private var gate = CanvasViewportGate()
     var changed: ((CGRect) -> Void)?
@@ -772,6 +795,8 @@ private struct CulledFreeCanvas<Content: View>: View {
     let viewport: CGSize
     let tileSize: CGSize
     let draggedID: String?
+    let selectedID: String?
+    let revealGeneration: Int
     let begin: (String) -> Void
     let end: () -> Void
     let save: (String, FreeIconPosition) -> Void
@@ -780,12 +805,12 @@ private struct CulledFreeCanvas<Content: View>: View {
     var body: some View {
         let visible = visibleViewport?.insetBy(dx: -tileSize.width * 2, dy: -tileSize.height * 2)
         ZStack(alignment: .topLeading) {
-            ForEach(entries.filter { entry in entry.id == draggedID || (visible.map { CGRect(origin: entry.origin, size: tileSize).intersects($0) } ?? true) }) { entry in
+            ForEach(entries.filter { entry in entry.id == draggedID || entry.id == selectedID || (visible.map { CGRect(origin: entry.origin, size: tileSize).intersects($0) } ?? true) }) { entry in
                 FreePlacementTile(origin: entry.origin, canvas: canvas, size: tileSize,
                     begin: { begin(entry.id) }, end: end, save: { save(entry.id, $0) }) { content(entry) }
             }
         }.frame(width: canvas.width, height: canvas.height, alignment: .topLeading)
-            .background(CanvasViewportMonitor(tileSize: tileSize) { rect in if visibleViewport != rect { visibleViewport = rect } })
+            .background(CanvasViewportMonitor(tileSize: tileSize, revealRect: entries.first { $0.id == selectedID }.map { CGRect(origin: $0.origin, size: tileSize) }, revealGeneration: revealGeneration) { rect in if visibleViewport != rect { visibleViewport = rect } })
             .frame(maxWidth: .infinity)
     }
 }

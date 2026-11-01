@@ -2,13 +2,14 @@ import AppKit
 import SwiftUI
 
 private enum SettingsCategory: String, CaseIterable {
-    case general, appearance, shortcuts, sound, backup, updates, about
+    case general, appearance, shortcuts, sound, hidden, backup, updates, about
     var title: String {
         switch self {
         case .general: return "通用"
         case .appearance: return "外观"
         case .shortcuts: return "快捷键"
         case .sound: return "声音"
+        case .hidden: return "隐藏应用"
         case .backup: return "备份"
         case .updates: return "更新内容"
         case .about: return "关于"
@@ -20,6 +21,7 @@ private enum SettingsCategory: String, CaseIterable {
         case .appearance: return "paintbrush"
         case .shortcuts: return "keyboard"
         case .sound: return "speaker.wave.2"
+        case .hidden: return "eye.slash"
         case .backup: return "clock.arrow.circlepath"
         case .updates: return "sparkles"
         case .about: return "info.circle"
@@ -31,6 +33,7 @@ private enum SettingsCategory: String, CaseIterable {
         case .appearance: return .purple
         case .shortcuts: return .cyan
         case .sound: return .orange
+        case .hidden: return .indigo
         case .backup: return .green
         case .updates: return .teal
         case .about: return .gray
@@ -46,7 +49,7 @@ struct SettingsView: View {
     @State private var category: SettingsCategory = .general
     @State private var legacyExpanded = false
     @State private var scalePreview = false
-    private var version: String { Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "3.12.2" }
+    private var version: String { Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "3.13.0" }
     private var appIcon: NSImage {
         Bundle.main.url(forResource: "AppIcon", withExtension: "icns").flatMap { NSImage(contentsOf: $0) }
             ?? NSImage(systemSymbolName: "square.grid.2x2", accessibilityDescription: nil)!
@@ -326,7 +329,10 @@ struct SettingsView: View {
                 soundRow("选择与翻页", key: \.soundNavigation)
                 note("使用 macOS 系统音效；选择“无”可单独关闭某项。")
             }
+        case .hidden:
+            card("管理隐藏应用", icon: "eye.slash") { HiddenApplicationsView(model: model) }
         case .backup:
+            card("备份历史", icon: "clock.arrow.circlepath") { BackupHistoryView(model: model) }
             card("布局备份", icon: "externaldrive") {
                 HStack(spacing: 12) {
                     Button(model.text("导出备份…")) { model.onExport?() }
@@ -346,49 +352,11 @@ struct SettingsView: View {
                 }
             }
         case .updates:
-            card("3.11.0 · 布局保护与画布优化", icon: "checkmark.shield") {
-                note("扫描异常保留分组，扫描完成后才能恢复；备份包含两套排列模式。导入支持后台读取、取消与大小限制，自由画布只加载附近图标。")
-            }
-            card("3.10.0 · 中文名称与自由移动", icon: "hand.draw") {
-                note("读取苹果系统应用的中文名称，保留英文别名搜索；自由放置中可直接拖动图标，新增明确的移动与排列入口。")
-            }
-            card("3.9.0 · 响应与轻量渲染", icon: "speedometer") {
-                note("后台扫描应用，先显示已有列表；普通图标使用轻量原生视图，缓存字体并分散图标预热；拖动及翻页时推迟列表更新。")
-            }
-            card("3.8.1 · 快速拖动", icon: "hand.draw") {
-                note("快速拖过图标时只更新相关目标，避免整页刷新；拖动期间停止无关的悬停放大计算。")
-            }
-            card("3.8.0 · 全屏与独立布局", icon: "arrow.up.left.and.arrow.down.right") {
-                note("全屏网格随屏幕展开；全屏和小窗口分别保存顺序、文件夹与自由位置。小窗口默认规整网格，切回全屏恢复原布局。")
-            }
-            card("3.7.1 · 拖动与间距", icon: "hand.draw") {
-                note("移除图标外框和勾选标记；合并时预览应用缩略图；缩小网格间距，减少重复图标渲染与指针更新。")
-            }
-            card("3.7.0 · 指针与文字", icon: "cursorarrow") {
-                note("指针距离驱动的相邻图标放大、手动排列下直接拖放成组、透明名称、字体与颜色选择、繁体中文。")
-            }
-            card("3.6.1 · 入口位置", icon: "menubar.dock.rectangle") {
-                note("Aplo 入口可选择程序坞、顶部菜单栏或两处都显示，切换立即生效并自动保存。")
-            }
-            card("3.6.0 · 窗口与动效", icon: "macwindow") {
-                note("连续滚动灵敏度、自由缩放、桌面固定与退出方式、工具栏上下位置、悬停放大、最小化，以及纯色透明背景。")
-            }
-            card("3.5.0 · 搜索与整理", icon: "sparkles") {
-                note("底部搜索入口、Dock 应用图标、自由放置与随机排列。修复大小对比窗口隐藏问题，缓存滚动列表以减少重复计算。")
-            }
-            card("3.4.1 · 窗口与顶部标识", icon: "macwindow") {
-                note("小窗口可自由拖动并记住位置。顶部图标和名称居中，设置入口位于底部中央。顶部图标与名称大小可独立调整。")
-            }
-            card("3.4.0 · 本次更新", icon: "sparkles") {
-                note("新增系统 Dock 显示方式、英语界面和色盲友好配色。")
-                note("文字和图标按百分比调整，提供当前与调整后的对比预览。")
-                note("连续浏览时系统应用置后，保留原布局和文件夹。")
-            }
-            card("3.3.0 · 连续浏览", icon: "hand.draw") {
-                note("左右与上下均支持任意位置停留，分页模式独立保留。")
-            }
-            card("3.2.4 · 翻页衔接", icon: "rectangle.split.3x1") {
-                note("保留两个方向的整页衔接，完善模式切换和原布局兼容。")
+            ForEach(ReleaseNote.bundled) { entry in
+                card(entry.title, icon: "sparkles") {
+                    Text(.init(entry.body)).font(.system(size: model.preferences.textPoints(13)))
+                        .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
         case .about:
             card("Aplo", icon: "info.circle") {

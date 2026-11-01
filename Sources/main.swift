@@ -16,7 +16,7 @@ private enum PreparedLayoutImport: Sendable {
 }
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItemValidation {
     let model: LauncherModel = {
         if let index = CommandLine.arguments.firstIndex(of: "--layout-file"),
            CommandLine.arguments.indices.contains(index + 1) {
@@ -184,6 +184,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         menu.addItem(applicationItem)
         let editItem = NSMenuItem(title: model.text("编辑"), action: nil, keyEquivalent: "")
         let editMenu = NSMenu(title: model.text("编辑"))
+        let undo = NSMenuItem(title: model.text("撤销"), action: #selector(undoOrganizationAction), keyEquivalent: "z")
+        undo.target = self; editMenu.addItem(undo)
+        let redo = NSMenuItem(title: model.text("重做"), action: #selector(redoOrganizationAction), keyEquivalent: "z")
+        redo.keyEquivalentModifierMask = [.command, .shift]; redo.target = self; editMenu.addItem(redo)
+        editMenu.addItem(.separator())
         for (title, action, key) in [
             ("剪切", #selector(NSText.cut(_:)), "x"),
             ("拷贝", #selector(NSText.copy(_:)), "c"),
@@ -197,11 +202,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         NSApp.mainMenu = menu
     }
 
+    private var editingText: Bool {
+        (model.searchExpanded || model.renamingFolderID != nil || model.showingSettings) && panel.firstResponder is NSTextView
+    }
+    private var textUndoManager: UndoManager? {
+        guard editingText,
+              let editor = panel.firstResponder as? NSTextView else { return nil }
+        return editor.undoManager
+    }
+    @objc private func undoOrganizationAction(_ sender: Any?) {
+        if editingText { textUndoManager?.undo() } else { model.undoOrganization() }
+    }
+    @objc private func redoOrganizationAction(_ sender: Any?) {
+        if editingText { textUndoManager?.redo() } else { model.redoOrganization() }
+    }
+    func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        if item.action == #selector(undoOrganizationAction) { return editingText ? (textUndoManager?.canUndo ?? false) : (model.canUndoOrganization && !model.importInProgress && model.draggingID == nil) }
+        if item.action == #selector(redoOrganizationAction) { return editingText ? (textUndoManager?.canRedo ?? false) : (model.canRedoOrganization && !model.importInProgress && model.draggingID == nil) }
+        return true
+    }
+
     private func configureKeyboard() {
-        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .leftMouseDown]) { [weak self] event in
             guard let self, self.panel.isVisible, self.panel.isKeyWindow, NSApp.modalWindow == nil,
                   !self.presentingSystemDialog else { return event }
             if self.model.presentingAppearancePreview { return event }
+            if event.type == .leftMouseDown { self.model.keyboardSelectionActive = false; return event }
             if self.model.draggingID != nil { return event } // Let AppKit finish or cancel its native drag session.
             if self.model.pageTransitionActive { self.resetPageMotion() }
             if self.model.recordingShortcut {
@@ -413,6 +439,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             self.panel.hidesOnDeactivate = !self.preview && !self.updatingEntryVisibility && self.model.preferences.dismissStyle == .outsideClick && !self.model.presentingAppearancePreview
             if !self.model.presentingAppearancePreview { self.panel.makeKeyAndOrderFront(nil) }
         }
+        model.onRestoreHistory = { [weak self] url in self?.startImport(url, legacy: false) }
         model.onNavigate = { [weak self] in
             guard let self, self.panel.isVisible, !self.model.showingSettings, !self.model.isSearching else { return }
             SoundManager.shared.play(.navigation)

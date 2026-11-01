@@ -7,6 +7,17 @@ enum AppStrings {
     }
     private static let cache = TranslationCache()
     static let english: [String: String] = [
+        "撤销": "Undo", "重做": "Redo", "隐藏应用": "Hide App", "管理隐藏应用": "Hidden Applications",
+        "隐藏仅影响显示和搜索，原分组及位置会保留。": "Hiding affects browsing and search only. Original folders and positions are preserved.",
+        "显示全部应用": "Show All Apps", "显示应用": "Show App", "备份历史": "Backup History",
+        "保存快照": "Save Snapshot", "清理旧自动备份": "Clean Up Older Automatic Backups",
+        "保留最近 20 份自动备份；手动快照不参与清理。旧备份移至废纸篓。": "Keep the latest 20 automatic backups and all manual snapshots. Older automatic backups move to Trash.",
+        "暂无备份历史": "No backup history yet", "自动备份": "Automatic Backup", "手动备份": "Manual Backup",
+        "预览与恢复": "Preview and Restore", "移至废纸篓": "Move to Trash",
+        "旧自动备份已移至废纸篓。": "Older automatic backups moved to Trash.", "手动快照已保存。": "Manual snapshot saved.",
+        "备份预览": "Backup Preview", "恢复此备份": "Restore This Backup",
+        "恢复前会自动备份当前布局；扫描不完整时不会覆盖。": "The current layout is backed up before restoring. Incomplete discovery prevents replacement.",
+        "全屏布局": "Fullscreen Layout", "小窗口布局": "Compact Layout", "个应用": "apps", "个文件夹": "folders", "页": "pages",
         "刷新应用列表": "Refresh Applications",
         "应用名称样式": "Application Labels", "字体": "Font", "系统字体": "System font", "字重": "Weight",
         "细体": "Light", "常规": "Regular", "中等": "Medium", "半粗体": "Semibold", "粗体": "Bold",

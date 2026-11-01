@@ -135,6 +135,7 @@ struct LauncherPreferences: Codable, Equatable {
     var brandNamePercent = 100.0
     var iconScalePercent = 100.0
     var textScalePercent = 100.0
+    var hiddenAppIDs: Set<String> = []
     var systemAppsLast = true
     var backgroundStyle: LauncherBackground = .glass
     var backgroundTransparency = 0.60
@@ -158,6 +159,7 @@ struct LauncherPreferences: Codable, Equatable {
 
     init() {}
     private enum CodingKeys: String, CodingKey {
+        case hiddenAppIDs
         case labelFontFamily, labelWeight, labelColor, labelColorHex
         case entryLocation, toolbarPosition, dismissStyle, pinToDesktop, magnificationEnabled
         case arrangement, compactArrangement
@@ -169,6 +171,7 @@ struct LauncherPreferences: Codable, Equatable {
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
+        hiddenAppIDs = Set(((try? c.decode([String].self, forKey: .hiddenAppIDs)) ?? []).prefix(10_000).filter { !$0.isEmpty && $0.count <= 2048 })
         labelFontFamily = String(((try? c.decode(String.self, forKey: .labelFontFamily)) ?? "").prefix(120))
         labelWeight = (try? c.decode(LauncherLabelWeight.self, forKey: .labelWeight)) ?? .regular
         labelColor = (try? c.decode(LauncherLabelColor.self, forKey: .labelColor)) ?? .automatic

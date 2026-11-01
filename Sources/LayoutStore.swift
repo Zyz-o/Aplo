@@ -41,6 +41,7 @@ struct DisplayLayoutProfile: Codable, Equatable, Sendable {
 }
 
 struct BackupPresentation: Codable, Equatable, Sendable {
+    var hiddenAppIDs: Set<String>? = nil
     var fullscreen: LauncherArrangement
     var compact: LauncherArrangement
 }
@@ -150,6 +151,9 @@ struct LauncherLayout: Codable, Equatable, Sendable {
     }
 
     func validated() throws -> LauncherLayout {
+        if let hidden = backupPresentation?.hiddenAppIDs {
+            guard hidden.count <= 10_000, hidden.allSatisfy({ !$0.isEmpty && $0.count <= 2048 }) else { throw LayoutError.invalidBackup }
+        }
         if let profile = otherDisplayLayout {
             _ = try LauncherLayout(freePositions: profile.freePositions, pages: profile.pages).validated()
         }

@@ -1,3 +1,12 @@
+# 3.13.0 — 2026-11-02
+
+- Replace apps with new folders in their original page and slot, preserving free-placement coordinates and the other display layout.
+- Navigate free layouts using actual tile coordinates in either direction. Reveal keyboard selections in the native scroll view and show a lightweight keyboard-only focus ring.
+- Add bounded, session-local organization undo/redo (Command-Z / Shift-Command-Z). Text editors retain their native undo behavior; inventory changes invalidate stale layout history.
+- Hide apps from browsing and search without changing stored folders or positions. Manage hidden apps in Settings; manual backups include visibility choices.
+- Browse automatic and manual backup history, preview both layouts, and restore through validated import. Cleanup moves older automatic backups to Trash, retains the latest 20, and preserves manual snapshots.
+- Generate in-app update history from the bundled CHANGELOG.
+
 # 3.12.2 — 2026-11-01
 
 - Preserve unknown applications, folders and positions in both layouts when organizing after incomplete discovery. Archive before the first write during an untrusted inventory and before confirmed removals; stop safely if the backup fails.

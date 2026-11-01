@@ -57,6 +57,15 @@ final class LauncherModel: ObservableObject {
     @Published private(set) var initialDiscoveryPending = true
     @Published private(set) var apps: [InstalledApp] = []
     @Published private(set) var results: [InstalledApp] = [] { didSet { cachedContainerItems = nil } }
+    @Published var keyboardSelectionActive = false
+    @Published private(set) var keyboardNavigationGeneration = 0
+    private var freeFrames: [String: CGRect] = [:]
+    @Published private(set) var canUndoOrganization = false
+    @Published private(set) var canRedoOrganization = false
+    private var organizationEditDepth = 0
+    private var replayingOrganization = false
+    private var undoStates: [OrganizationState] = []
+    private var redoStates: [OrganizationState] = []
     var onNavigate: (() -> Void)?
     var onPageRequested: ((Int) -> Void)?
     @Published private(set) var selectedIndex = 0 { didSet { if oldValue != selectedIndex { onNavigate?() } } }
@@ -135,6 +144,7 @@ final class LauncherModel: ObservableObject {
     private var completedRefreshGeneration: UInt64 = 0
     @Published var importInProgress = false
     var onCancelImport: (() -> Void)?
+    var onRestoreHistory: ((URL) -> Void)?
     private var iconVersions: [String: [Date]] = [:]
     private var lookup: [String: InstalledApp] = [:]
     private var startupMessage: String?
@@ -165,7 +175,7 @@ final class LauncherModel: ObservableObject {
     private func switchLayoutMode(from previousMode: Bool) {
         var updated = layout
         updated.prepareDisplayMode(fullscreen: isFullscreen)
-        if !commit(updated) {
+        if !commit(updated, recordUndo: false) {
             switchingDisplayMode = true
             isFullscreen = previousMode
             switchingDisplayMode = false
@@ -176,8 +186,20 @@ final class LauncherModel: ObservableObject {
         pageMotion.active = false; pageMotion.offset = 0
     }
 
+    var visibleApplicationCount: Int { apps.filter { !preferences.hiddenAppIDs.contains($0.id) }.count }
     var isSearching: Bool { !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-    var browsingLayout: LauncherLayout { preferences.automaticCategories ? categorizedLayout : layout }
+    var browsingLayout: LauncherLayout {
+        var visible = preferences.automaticCategories ? categorizedLayout : layout
+        let hidden = preferences.hiddenAppIDs
+        guard !hidden.isEmpty else { return visible }
+        visible.pages = visible.pages.map { page in page.compactMap { item in
+            if item.kind == .app { return item.appID.map { hidden.contains($0) } == true ? nil : item }
+            var folder = item; folder.children.removeAll { hidden.contains($0) }
+            return folder.children.isEmpty ? nil : folder
+        } }.filter { !$0.isEmpty }
+        if visible.pages.isEmpty { visible.pages = [[]] }
+        return visible
+    }
     var openFolder: LayoutItem? { browsingLayout.folders.first { $0.id == openFolderID } }
     var containerItems: [LayoutItem] {
         if let cachedContainerItems { return cachedContainerItems }
@@ -225,6 +247,9 @@ final class LauncherModel: ObservableObject {
         change(&updated)
         if updated.pinToDesktop && !preferences.pinToDesktop { updated.dismissStyle = .escapeOnly }
         guard updated != preferences else { return }
+        let organizationChanged = updated.hiddenAppIDs != preferences.hiddenAppIDs || updated.arrangement != preferences.arrangement || updated.compactArrangement != preferences.compactArrangement || updated.automaticCategories != preferences.automaticCategories
+        let previousOrganization = organizationChanged ? organizationState : nil
+        let hiddenChanged = updated.hiddenAppIDs != preferences.hiddenAppIDs
         let orderingChanged = updated.systemAppsLast != preferences.systemAppsLast
         let navigationChanged = updated.navigationStyle != preferences.navigationStyle || updated.pagingDirection != preferences.pagingDirection
         let categoryChanged = updated.automaticCategories != preferences.automaticCategories
@@ -240,7 +265,9 @@ final class LauncherModel: ObservableObject {
             }
         } else { flushPreferences() }
         if navigationChanged || orderingChanged { pageIndex = 0; selectedIndex = 0 }
+        if hiddenChanged { filter() }
         if categoryChanged { openFolderID = nil; renamingFolderID = nil; folderNameDraft = ""; editing = false; query = ""; focusGeneration += 1 }
+        if let previousOrganization { recordOrganizationEdit(previousOrganization) }
         onPreferencesChanged?(changes)
         if languageChanged { requestRefresh(resetSearch: false) }
     }
@@ -332,6 +359,7 @@ final class LauncherModel: ObservableObject {
     }
     func waitForCatalogRefresh() async { await catalogRefresh?.value }
     private func resetBrowsingState() {
+        keyboardSelectionActive = false
         searchExpanded = false; openFolderID = nil; renamingFolderID = nil
         editing = false; showingSettings = false; query = ""
         focusGeneration += 1
@@ -348,6 +376,7 @@ final class LauncherModel: ObservableObject {
         let inventoryChanged = apps != inventory
         let imagesChanged = iconVersions != snapshot.iconVersions
         if inventoryChanged {
+            clearOrganizationHistory()
             apps = inventory
             categorizedLayout = AppClassifier.layout(for: apps)
             if let preparedIndex { searchIndex.install(preparedIndex) }
@@ -380,7 +409,7 @@ final class LauncherModel: ObservableObject {
         var updated = layout
         updated.reconcile(with: apps.map(\.id), preservingMissing: !hasTrustedInventory)
         if updated != layout || !FileManager.default.fileExists(atPath: store.url.path) {
-            _ = commit(updated)
+            _ = commit(updated, recordUndo: false)
         }
         if openFolderID != nil && openFolder == nil { openFolderID = nil }
         if resetSearch { resetBrowsingState() }
@@ -397,7 +426,7 @@ final class LauncherModel: ObservableObject {
     }
 
     private func filter() {
-        results = searchIndex.matching(apps, query: query)
+        results = searchIndex.matching(apps.filter { !preferences.hiddenAppIDs.contains($0.id) }, query: query)
         pageIndex = 0
         selectedIndex = 0
         draggingID = nil
@@ -405,10 +434,19 @@ final class LauncherModel: ObservableObject {
     }
 
     func select(_ index: Int) {
+        keyboardSelectionActive = false
         if visibleItems.indices.contains(index) { selectedIndex = index }
     }
     func moveSelection(by offset: Int) {
         guard !containerItems.isEmpty else { return }
+        keyboardSelectionActive = true
+        defer { keyboardNavigationGeneration &+= 1 }
+        if usesFreePlacement, abs(offset) == 1 || abs(offset) == columnCount {
+            let frames = containerItems.map { freeFrames[$0.id] ?? .zero }
+            let direction = abs(offset) == 1 ? CGPoint(x: offset > 0 ? 1 : -1, y: 0) : CGPoint(x: 0, y: offset > 0 ? 1 : -1)
+            selectedIndex = SpatialNavigation.neighbor(from: selectedIndex, frames: frames, direction: direction)
+            return
+        }
         if isContinuousScrolling {
             if preferences.pagingDirection == .horizontal && (abs(offset) == 1 || abs(offset) == columnCount) {
                 selectedIndex = LauncherGeometry.horizontalNeighbor(index: selectedIndex, offset: offset, itemCount: containerItems.count, rows: horizontalRowCount, columns: columnCount)
@@ -473,24 +511,26 @@ final class LauncherModel: ObservableObject {
         _ = commit(updated)
     }
     func shuffleLayout() {
-        do { _ = try store.archiveCurrent() }
-        catch { message = "无法备份布局，未打乱排列。"; return }
-        var updated = layout
-        if let folderID = openFolderID, layout.folders.contains(where: { $0.id == folderID }) {
-            for page in updated.pages.indices {
-                if let index = updated.pages[page].firstIndex(where: { $0.id == folderID }) { updated.pages[page][index].children.shuffle() }
+        withOrganizationEdit {
+            do { _ = try store.archiveCurrent() }
+            catch { message = "无法备份布局，未打乱排列。"; return }
+            var updated = layout
+            if let folderID = openFolderID, layout.folders.contains(where: { $0.id == folderID }) {
+                for page in updated.pages.indices {
+                    if let index = updated.pages[page].firstIndex(where: { $0.id == folderID }) { updated.pages[page][index].children.shuffle() }
+                }
+            } else {
+                let items = updated.allItems.shuffled()
+                updated.pages = stride(from: 0, to: items.count, by: LauncherLayout.pageSize).map { Array(items[$0..<min($0 + LauncherLayout.pageSize, items.count)]) }
+                if updated.pages.isEmpty { updated.pages = [[]] }
             }
-        } else {
-            let items = updated.allItems.shuffled()
-            updated.pages = stride(from: 0, to: items.count, by: LauncherLayout.pageSize).map { Array(items[$0..<min($0 + LauncherLayout.pageSize, items.count)]) }
-            if updated.pages.isEmpty { updated.pages = [[]] }
+            guard commit(updated) else { return }
+            updatePreferences {
+                if isFullscreen { $0.arrangement = .grid } else { $0.compactArrangement = .grid }
+                $0.automaticCategories = false
+            }
+            pageIndex = 0; selectedIndex = 0
         }
-        guard commit(updated) else { return }
-        updatePreferences {
-            if isFullscreen { $0.arrangement = .grid } else { $0.compactArrangement = .grid }
-            $0.automaticCategories = false
-        }
-        pageIndex = 0; selectedIndex = 0
     }
     func toggleEditing() {
         guard !preferences.automaticCategories else { openSettings(); return }
@@ -524,10 +564,18 @@ final class LauncherModel: ObservableObject {
 
     func createFolder(containing appID: String) {
         var updated = layout
-        guard let node = updated.remove("app:" + appID), let id = node.appID else { return }
-        let folder = LayoutItem.folder(children: [id])
-        updated.pages[min(pageIndex, updated.pages.count - 1)].append(folder)
-        guard commitReconciled(updated) else { return }
+        guard let page = updated.pages.firstIndex(where: { $0.contains { $0.appID == appID && $0.kind == .app } }),
+              let index = updated.pages[page].firstIndex(where: { $0.appID == appID && $0.kind == .app }) else { return }
+        let folder = LayoutItem.folder(children: [appID])
+        updated.pages[page][index] = folder
+        // Move both directional coordinates with the replacement, leaving all other icons alone.
+        if let positions = updated.freePositions {
+            for (key, value) in positions where key.hasPrefix("root:") && key.hasSuffix(":app:" + appID) {
+                updated.freePositions?[String(key.dropLast(("app:" + appID).count)) + folder.id] = value
+                updated.freePositions?.removeValue(forKey: key)
+            }
+        }
+        guard commit(updated) else { return }
         editing = true
         beginRename(folder)
     }
@@ -635,13 +683,13 @@ final class LauncherModel: ObservableObject {
     func saveShortcut(_ shortcut: ShortcutBinding) -> Bool {
         var updated = layout
         updated.shortcut = shortcut
-        return commit(updated)
+        return commit(updated, recordUndo: false)
     }
     func resetShortcut() { _ = onShortcutRequested?(.standard) }
 
     func backupData() throws -> Data {
         var backup = layout
-        backup.backupPresentation = BackupPresentation(fullscreen: preferences.arrangement, compact: preferences.compactArrangement ?? .grid)
+        backup.backupPresentation = BackupPresentation(hiddenAppIDs: preferences.hiddenAppIDs, fullscreen: preferences.arrangement, compact: preferences.compactArrangement ?? .grid)
         return try LayoutStore.encode(backup)
     }
     func ensureInventoryForImport() async throws {
@@ -658,25 +706,28 @@ final class LauncherModel: ObservableObject {
         draggingID = id
     }
     func restore(_ candidate: LauncherLayout) throws {
-        guard hasTrustedInventory else { throw LayoutError.inventoryUnavailable }
-        _ = try candidate.validated()
-        _ = try store.archiveCurrent()
-        var updated = candidate
-        updated.prepareDisplayMode(fullscreen: isFullscreen)
-        updated.shortcut = layout.shortcut
-        updated.backupPresentation = nil
-        updated.reconcile(with: apps.map(\.id))
-        try store.save(updated)
-        layout = updated
-        updatePreferences {
-            $0.automaticCategories = false
-            if let presentation = candidate.backupPresentation {
-                $0.arrangement = presentation.fullscreen
-                $0.compactArrangement = presentation.compact
+        try withOrganizationEdit {
+            guard hasTrustedInventory else { throw LayoutError.inventoryUnavailable }
+            _ = try candidate.validated()
+            _ = try store.archiveCurrent()
+            var updated = candidate
+            updated.prepareDisplayMode(fullscreen: isFullscreen)
+            updated.shortcut = layout.shortcut
+            updated.backupPresentation = nil
+            updated.reconcile(with: apps.map(\.id))
+            try store.save(updated)
+            layout = updated
+            updatePreferences {
+                $0.automaticCategories = false
+                if let presentation = candidate.backupPresentation {
+                    if let hidden = presentation.hiddenAppIDs { $0.hiddenAppIDs = hidden }
+                    $0.arrangement = presentation.fullscreen
+                    $0.compactArrangement = presentation.compact
+                }
             }
+            openFolderID = nil
+            query = ""
         }
-        openFolderID = nil
-        query = ""
     }
     @discardableResult
     private func commitReconciled(_ candidate: LauncherLayout) -> Bool {
@@ -689,8 +740,9 @@ final class LauncherModel: ObservableObject {
         return succeeded
     }
     @discardableResult
-    private func commit(_ candidate: LauncherLayout) -> Bool {
+    private func commit(_ candidate: LauncherLayout, recordUndo: Bool = true) -> Bool {
         guard canWriteLayout else { message = "原布局文件尚未安全备份，已停止覆盖写入。"; return false }
+        let previous = organizationState
         let removedIDs = candidate.removedAppIDs(from: layout)
         guard hasTrustedInventory || removedIDs.isEmpty else {
             message = "部分应用暂时无法读取，已暂停可能移除应用的布局操作。"; return false
@@ -701,8 +753,59 @@ final class LauncherModel: ObservableObject {
                 _ = try store.archiveCurrent()
                 if !hasTrustedInventory { archivedUntrustedLayout = true }
             }
-            try store.save(candidate); layout = candidate; pruneTileFeedback(); return true
+            try store.save(candidate); layout = candidate; pruneTileFeedback()
+            if recordUndo { recordOrganizationEdit(previous) }
+            return true
         }
         catch { message = "无法保存布局：\(error.localizedDescription)"; return false }
+    }
+}
+
+
+extension LauncherModel {
+    func updateFreeFrames(_ frames: [String: CGRect]) { freeFrames = frames }
+    private var organizationState: OrganizationState { OrganizationState(layout: layout, hiddenAppIDs: preferences.hiddenAppIDs, arrangement: preferences.arrangement, compactArrangement: preferences.compactArrangement, automaticCategories: preferences.automaticCategories) }
+    private func withOrganizationEdit(_ action: () throws -> Void) rethrows {
+        let before = organizationState
+        organizationEditDepth += 1
+        defer { organizationEditDepth -= 1; recordOrganizationEdit(before) }
+        try action()
+    }
+    private func clearOrganizationHistory() {
+        undoStates.removeAll(); redoStates.removeAll()
+        canUndoOrganization = false; canRedoOrganization = false
+    }
+    private func recordOrganizationEdit(_ previous: OrganizationState) {
+        guard !replayingOrganization, organizationEditDepth == 0, previous != organizationState else { return }
+        undoStates.append(previous)
+        if undoStates.count > 50 { undoStates.removeFirst() }
+        redoStates.removeAll(); canUndoOrganization = true; canRedoOrganization = false
+    }
+    func setAppHidden(_ id: String, hidden: Bool) {
+        guard !importInProgress else { return }
+        updatePreferences { if hidden { $0.hiddenAppIDs.insert(id) } else { $0.hiddenAppIDs.remove(id) } }
+    }
+    func showAllApplications() {
+        guard !importInProgress else { return }
+        updatePreferences { $0.hiddenAppIDs.removeAll() }
+    }
+    func undoOrganization() { applyOrganizationHistory(redo: false) }
+    func redoOrganization() { applyOrganizationHistory(redo: true) }
+    private func applyOrganizationHistory(redo: Bool) {
+        guard !importInProgress, draggingID == nil, var target = (redo ? redoStates.last : undoStates.last) else { return }
+        let current = organizationState
+        target.layout.prepareDisplayMode(fullscreen: isFullscreen)
+        guard commit(target.layout, recordUndo: false) else { return }
+        replayingOrganization = true
+        updatePreferences {
+            $0.hiddenAppIDs = target.hiddenAppIDs
+            $0.arrangement = target.arrangement; $0.compactArrangement = target.compactArrangement
+            $0.automaticCategories = target.automaticCategories
+        }
+        replayingOrganization = false
+        if redo { redoStates.removeLast(); undoStates.append(current) }
+        else { undoStates.removeLast(); redoStates.append(current) }
+        canUndoOrganization = !undoStates.isEmpty; canRedoOrganization = !redoStates.isEmpty
+        endDrag(); renamingFolderID = nil; openFolderID = nil; query = ""
     }
 }
