@@ -1,3 +1,7 @@
+# 3.13.1 — 2026-11-02
+
+- Leave the folder navigation context when hiding its final visible child, so returning to the root free canvas uses root coordinates. Preserve the hidden folder and positions in saved layouts.
+
 # 3.13.0 — 2026-11-02
 
 - Replace apps with new folders in their original page and slot, preserving free-placement coordinates and the other display layout.

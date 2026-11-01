@@ -72,9 +72,10 @@ import XCTest
     }
     func testHiddenAppsKeepLayoutAndSearchExclusionAndUndo() throws {
         let (model, defaults, cleanup) = try fixture(); defer { cleanup() }
-        model.createFolder(containing: "test.39"); model.finishRename(cancel: true); model.closeFolder()
+        model.createFolder(containing: "test.39"); model.finishRename(cancel: true)
         let original = model.layout
         model.setAppHidden("test.39", hidden: true)
+        XCTAssertNil(model.openFolderID, "Hiding the final child must leave the now-invisible folder's coordinate space")
         XCTAssertEqual(model.layout, original)
         XCTAssertFalse(model.containerItems.contains { $0.children.contains("test.39") })
         model.query = "App 39"

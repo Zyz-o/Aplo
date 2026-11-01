@@ -265,7 +265,10 @@ final class LauncherModel: ObservableObject {
             }
         } else { flushPreferences() }
         if navigationChanged || orderingChanged { pageIndex = 0; selectedIndex = 0 }
-        if hiddenChanged { filter() }
+        if hiddenChanged {
+            if openFolderID != nil && openFolder == nil { openFolderID = nil }
+            filter()
+        }
         if categoryChanged { openFolderID = nil; renamingFolderID = nil; folderNameDraft = ""; editing = false; query = ""; focusGeneration += 1 }
         if let previousOrganization { recordOrganizationEdit(previousOrganization) }
         onPreferencesChanged?(changes)
