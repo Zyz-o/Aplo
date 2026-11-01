@@ -10,6 +10,6 @@ let package = Package(
             .linkedFramework("AppKit"), .linkedFramework("SwiftUI"),
             .linkedFramework("Carbon"), .linkedLibrary("sqlite3")
         ]),
-        .testTarget(name: "AploTests", dependencies: ["Aplo"], path: "Tests")
+        .testTarget(name: "AploTests", dependencies: ["Aplo"], path: "Tests", exclude: ["test_installer.py"])
     ]
 )

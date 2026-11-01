@@ -16,3 +16,5 @@ SearchIndexEntry.swift and CJKTransliterator.swift are unmodified. FuzzyMatcher.
 Aplo's integration adapter and presentation modes are local additions. Aplo is distributed under GPL version 3. The installed app includes LICENSE, this notice, and CorrespondingSource.zip in Contents/Resources, containing the sources, assets and scripts used to build it. No warranty is provided; see the license for details.
 
 Version 3.2 additionally adapts LaunchNext/LaunchNext/SoundManager.swift into Sources/Vendor/LaunchNextSound/SoundManager.swift. Changes: bind to LauncherModel preferences, remove voice-feedback dependency, add per-app volume and navigation-event throttling, and annotate MainActor isolation. The upstream GPL-3.0 license and attribution apply.
+
+Aplo 3.12.2: `SearchIndexEntry` explicitly conforms to Sendable; immutable prepared search indices are built off the main actor.

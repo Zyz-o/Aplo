@@ -1,22 +1,33 @@
 import Foundation
 
+struct PreparedSearchIndex: Sendable {
+    let entries: [String: SearchIndexEntry]
+    let appEntries: [String: [SearchIndexEntry]]
+}
+
 // Adapter for the LaunchNext search sources. See THIRD_PARTY_NOTICES.md.
 @MainActor final class IntegratedSearch {
-    private var entries: [String: SearchIndexEntry] = [:]
+    private(set) var entries: [String: SearchIndexEntry] = [:]
     private var appEntries: [String: [SearchIndexEntry]] = [:]
     private let matcher = FuzzyMatcher()
 
-    func update(_ apps: [InstalledApp]) {
+    func update(_ apps: [InstalledApp]) { install(Self.prepare(apps, reusing: entries)) }
+
+    func install(_ prepared: PreparedSearchIndex) {
+        entries = prepared.entries; appEntries = prepared.appEntries
+    }
+
+    nonisolated static func prepare(_ apps: [InstalledApp], reusing entries: [String: SearchIndexEntry]) -> PreparedSearchIndex {
         var next: [String: SearchIndexEntry] = [:]
         for app in apps {
             for name in [app.name] + app.searchAliases {
                 next[name] = entries[name] ?? SearchIndexEntry(displayName: name, prepareTransliteration: true)
             }
         }
-        entries = next
-        appEntries = Dictionary(uniqueKeysWithValues: apps.map { app in
+        let appEntries = Dictionary(uniqueKeysWithValues: apps.map { app in
             (app.id, ([app.name] + app.searchAliases).compactMap { next[$0] })
         })
+        return PreparedSearchIndex(entries: next, appEntries: appEntries)
     }
 
     func matching(_ apps: [InstalledApp], query: String) -> [InstalledApp] {

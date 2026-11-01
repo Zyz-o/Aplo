@@ -62,3 +62,11 @@ zsh Scripts/package-release.sh
 Aplo 按 [GNU GPL version 3](LICENSE) 分发，包含 [LaunchNext](https://github.com/RoversX/LaunchNext) 的搜索模块和适配后的音效模块。LaunchNext 基于 [LaunchNow](https://github.com/ggkevinnnn/LaunchNow)。具体来源、版本及修改见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
 应用包包含许可证、第三方声明及 `CorrespondingSource.zip` 对应源码。保留上游版权与许可；无任何担保，详见 LICENSE。应用图标使用项目提供的照片。
+
+## Validation and upgrade safety
+
+`./test.sh` runs Swift layout/search regressions and Python installer failure-injection tests. GitHub Actions checks every main-branch push and pull request; version changes also publish a preview after validation.
+
+`./Scripts/install-local.sh` backs up the installed app, final layout and preferences, stages a clean replacement bundle, verifies it and checks launch liveness. Verification or activation failure restores the previous bundle and backed-up data. If filesystem errors prevent rollback, the script reports the retained recovery path. This short launch check does not guarantee the absence of later runtime failures.
+
+`./Scripts/benchmark-search.sh` measures optimized cold/warm search-index preparation and per-query latency for installed apps and 300 synthetic CJK apps. Measurements are machine-specific, not frame-rate guarantees. Normal UI discovery prepares the index off the main actor; synchronous `refresh` is reserved for deterministic tests/import support.

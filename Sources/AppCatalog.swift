@@ -20,6 +20,13 @@ struct CatalogSnapshot: Sendable {
     let apps: [InstalledApp]
     let iconVersions: [String: [Date]]
     let isComplete: Bool
+    func inventory(retaining knownApps: [InstalledApp]) -> [InstalledApp] {
+        guard !isComplete else { return apps }
+        let found = Set(apps.map(\.id))
+        // Hide unavailable launch paths, but never use this partial list to prune saved layouts.
+        return (apps + knownApps.filter { !found.contains($0.id) && FileManager.default.fileExists(atPath: $0.url.path) }).sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
 }
 
 struct AppCatalog: Sendable {

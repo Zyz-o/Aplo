@@ -46,7 +46,7 @@ struct SettingsView: View {
     @State private var category: SettingsCategory = .general
     @State private var legacyExpanded = false
     @State private var scalePreview = false
-    private var version: String { Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "3.12.1" }
+    private var version: String { Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "3.12.2" }
     private var appIcon: NSImage {
         Bundle.main.url(forResource: "AppIcon", withExtension: "icns").flatMap { NSImage(contentsOf: $0) }
             ?? NSImage(systemSymbolName: "square.grid.2x2", accessibilityDescription: nil)!

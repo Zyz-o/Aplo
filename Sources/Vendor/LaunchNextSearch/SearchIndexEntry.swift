@@ -1,6 +1,6 @@
 import Foundation
 
-struct SearchIndexEntry {
+struct SearchIndexEntry: Sendable {
     let displayName: String
     let normalizedName: String
     let tokens: [String]

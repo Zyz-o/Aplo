@@ -2,7 +2,10 @@
 set -euo pipefail
 project_dir="${0:A:h}"
 build_dir="$project_dir/build"
-app_dir="$build_dir/Aplo.app"
+mkdir -p "$build_dir"
+staging_dir=$(mktemp -d "$build_dir/.Aplo-build.XXXXXX")
+trap 'rm -rf "$staging_dir"' EXIT
+app_dir="$staging_dir/Aplo.app"
 mkdir -p "$app_dir/Contents/MacOS" "$app_dir/Contents/Resources"
 swift build --package-path "$project_dir" -c release --arch arm64 --product Aplo
 binary_dir=$(swift build --package-path "$project_dir" -c release --arch arm64 --show-bin-path)
@@ -19,4 +22,6 @@ rm -f "$source_archive"
 )
 codesign --force --sign - "$app_dir"
 codesign --verify --deep --strict "$app_dir"
-print "Built: $app_dir"
+rm -rf "$build_dir/Aplo.app"
+mv "$app_dir" "$build_dir/Aplo.app"
+print "Built: $build_dir/Aplo.app"

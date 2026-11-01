@@ -59,6 +59,21 @@ struct LauncherLayout: Codable, Equatable, Sendable {
     var folders: [LayoutItem] { allItems.filter { $0.kind == .folder } }
     var appIDs: [String] { allItems.flatMap { $0.kind == .app ? [$0.appID].compactMap { $0 } : $0.children } }
 
+    func removedAppIDs(from previous: LauncherLayout) -> Set<String> {
+        func profiles(_ value: LauncherLayout) -> [Bool: Set<String>] {
+            let active = value.activeLayoutIsFullscreen ?? false
+            var result = [active: Set(value.appIDs)]
+            if let other = value.otherDisplayLayout {
+                result[!active] = Set(other.pages.flatMap { $0 }.flatMap { $0.kind == .app ? [$0.appID].compactMap { $0 } : $0.children })
+            }
+            return result
+        }
+        let current = profiles(self)
+        return profiles(previous).reduce(into: Set<String>()) { removed, pair in
+            removed.formUnion(pair.value.subtracting(current[pair.key] ?? []))
+        }
+    }
+
     var displayProfile: DisplayLayoutProfile { DisplayLayoutProfile(pages: pages, freePositions: freePositions) }
     mutating func prepareDisplayMode(fullscreen: Bool) {
         if let active = activeLayoutIsFullscreen {
@@ -81,13 +96,13 @@ struct LauncherLayout: Codable, Equatable, Sendable {
         activeLayoutIsFullscreen = fullscreen
     }
 
-    mutating func reconcile(with installedIDs: [String]) {
+    mutating func reconcile(with installedIDs: [String], preservingMissing: Bool = false) {
         if let profile = otherDisplayLayout {
             var other = LauncherLayout(freePositions: profile.freePositions, pages: profile.pages)
-            other.reconcile(with: installedIDs)
+            other.reconcile(with: installedIDs, preservingMissing: preservingMissing)
             otherDisplayLayout = other.displayProfile
         }
-        let installed = Set(installedIDs)
+        let installed = Set(installedIDs).union(preservingMissing ? appIDs : [])
         var seen = Set<String>()
         var seenFolders = Set<String>()
         var normalized: [[LayoutItem]] = []

@@ -131,6 +131,7 @@ final class LauncherModel: ObservableObject {
     private var lastCompletedScan: TimeInterval?
     private var refreshInFlight = false
     private var hasTrustedInventory = false
+    private var archivedUntrustedLayout = false
     private var completedRefreshGeneration: UInt64 = 0
     @Published var importInProgress = false
     var onCancelImport: (() -> Void)?
@@ -306,16 +307,23 @@ final class LauncherModel: ObservableObject {
         catalogRefresh?.cancel()
         let catalog = catalog
         let namingLanguages = applicationNamingLanguages
-        let scan = Task.detached(priority: .userInitiated) { catalog.snapshot(preferredLanguages: namingLanguages) }
+        let previousApps = apps
+        let previousEntries = searchIndex.entries
+        let scan = Task.detached(priority: .userInitiated) {
+            let snapshot = catalog.snapshot(preferredLanguages: namingLanguages)
+            let inventory = snapshot.inventory(retaining: previousApps)
+            let prepared = inventory == previousApps ? nil : IntegratedSearch.prepare(inventory, reusing: previousEntries)
+            return (snapshot, prepared)
+        }
         catalogRefresh = Task { @MainActor [weak self] in
-            let snapshot = await withTaskCancellationHandler(operation: { await scan.value }, onCancel: { scan.cancel() })
+            let (snapshot, preparedIndex) = await withTaskCancellationHandler(operation: { await scan.value }, onCancel: { scan.cancel() })
             guard !Task.isCancelled, let self, self.refreshGeneration == generation else { return }
             // A completed scan must not replace drag sources or rebuild an animating page.
             while self.draggingID != nil || self.pageTransitionActive || self.scrollInteractionActive {
                 try? await Task.sleep(for: .milliseconds(16))
                 guard !Task.isCancelled, self.refreshGeneration == generation else { return }
             }
-            self.applySnapshot(snapshot, resetSearch: false)
+            self.applySnapshot(snapshot, resetSearch: false, preparedIndex: preparedIndex)
             self.completedRefreshGeneration = generation
             self.refreshInFlight = false
             self.lastCompletedScan = ProcessInfo.processInfo.systemUptime
@@ -328,14 +336,12 @@ final class LauncherModel: ObservableObject {
         editing = false; showingSettings = false; query = ""
         focusGeneration += 1
     }
-    private func applySnapshot(_ snapshot: CatalogSnapshot, resetSearch: Bool) {
+    private func applySnapshot(_ snapshot: CatalogSnapshot, resetSearch: Bool, preparedIndex: PreparedSearchIndex? = nil) {
         if initialDiscoveryPending { initialDiscoveryPending = false }
+        if snapshot.isComplete { archivedUntrustedLayout = false }
         hasTrustedInventory = snapshot.isComplete
-        let inventory: [InstalledApp]
-        if snapshot.isComplete { inventory = snapshot.apps }
-        else {
-            let discovered = Set(snapshot.apps.map(\.id))
-            inventory = (snapshot.apps + apps.filter { !discovered.contains($0.id) && FileManager.default.fileExists(atPath: $0.url.path) }).sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        let inventory = snapshot.inventory(retaining: apps)
+        if !snapshot.isComplete {
             let warning = "部分应用暂时无法读取，已保留原布局；请稍后刷新重试。"
             if message != warning { message = warning }
         }
@@ -344,7 +350,8 @@ final class LauncherModel: ObservableObject {
         if inventoryChanged {
             apps = inventory
             categorizedLayout = AppClassifier.layout(for: apps)
-            searchIndex.update(apps)
+            if let preparedIndex { searchIndex.install(preparedIndex) }
+            else { searchIndex.update(apps) }
             lookup = Dictionary(uniqueKeysWithValues: apps.map { ($0.id, $0) })
             cachedContainerItems = nil
         }
@@ -371,14 +378,9 @@ final class LauncherModel: ObservableObject {
             }
         }
         var updated = layout
-        let originalIDs = Set(layout.appIDs + (layout.otherDisplayLayout?.pages.flatMap { $0 }.flatMap { $0.kind == .app ? [$0.appID].compactMap { $0 } : $0.children } ?? []))
-        let retainedIDs = snapshot.isComplete ? apps.map(\.id) : Array(originalIDs.union(apps.map(\.id)))
-        updated.reconcile(with: retainedIDs)
+        updated.reconcile(with: apps.map(\.id), preservingMissing: !hasTrustedInventory)
         if updated != layout || !FileManager.default.fileExists(atPath: store.url.path) {
-            do {
-                if !originalIDs.subtracting(retainedIDs).isEmpty { _ = try store.archiveCurrent() }
-                if !commit(updated) { layout = updated }
-            } catch { message = "无法备份原布局，已暂停移除失效项目。" }
+            _ = commit(updated)
         }
         if openFolderID != nil && openFolder == nil { openFolderID = nil }
         if resetSearch { resetBrowsingState() }
@@ -679,7 +681,7 @@ final class LauncherModel: ObservableObject {
     @discardableResult
     private func commitReconciled(_ candidate: LauncherLayout) -> Bool {
         var candidate = candidate
-        candidate.reconcile(with: apps.map(\.id))
+        candidate.reconcile(with: apps.map(\.id), preservingMissing: !hasTrustedInventory)
         let succeeded = commit(candidate)
         if openFolderID != nil && openFolder == nil { openFolderID = nil }
         pageIndex = min(pageIndex, pageCount - 1)
@@ -689,7 +691,18 @@ final class LauncherModel: ObservableObject {
     @discardableResult
     private func commit(_ candidate: LauncherLayout) -> Bool {
         guard canWriteLayout else { message = "原布局文件尚未安全备份，已停止覆盖写入。"; return false }
-        do { try store.save(candidate); layout = candidate; pruneTileFeedback(); return true }
+        let removedIDs = candidate.removedAppIDs(from: layout)
+        guard hasTrustedInventory || removedIDs.isEmpty else {
+            message = "部分应用暂时无法读取，已暂停可能移除应用的布局操作。"; return false
+        }
+        do {
+            // Guard every write path, including organization after a partial cold-start scan.
+            if !removedIDs.isEmpty || (!hasTrustedInventory && !archivedUntrustedLayout) {
+                _ = try store.archiveCurrent()
+                if !hasTrustedInventory { archivedUntrustedLayout = true }
+            }
+            try store.save(candidate); layout = candidate; pruneTileFeedback(); return true
+        }
         catch { message = "无法保存布局：\(error.localizedDescription)"; return false }
     }
 }

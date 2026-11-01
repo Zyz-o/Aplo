@@ -1,3 +1,10 @@
+# 3.12.2 — 2026-11-01
+
+- Preserve unknown applications, folders and positions in both layouts when organizing after incomplete discovery. Archive before the first write during an untrusted inventory and before confirmed removals; stop safely if the backup fails.
+- Stage clean app bundles and verify signatures before replacement. Roll back the prior bundle and backed-up user state if installed verification or launch checks fail; serialize local installations.
+- Run source tests and signed app builds on every main-branch push and pull request, including Python installer failure-injection tests.
+- Measure search independently with an optimized benchmark. Prepare immutable pinyin/alias indices alongside discovery on a background task; keep low-latency queries synchronous and commit inventory/index together with generation checks.
+
 # 3.12.1 — 2026-11-01
 
 - Remove the central header photo and its size control; retain the Aplo title and existing saved preferences.

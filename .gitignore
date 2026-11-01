@@ -10,3 +10,6 @@ dist/
 *.mobileprovision
 REVIEW-*.md
 VALIDATION*.md
+
+__pycache__/
+*.pyc
