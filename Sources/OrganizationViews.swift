@@ -4,9 +4,10 @@ import SwiftUI
 struct HiddenApplicationsView: View {
     @ObservedObject var model: LauncherModel
     @State private var query = ""
+    @State private var onlyHidden = false
     private var applications: [(String, String)] {
         let missing = model.preferences.hiddenAppIDs.subtracting(model.apps.map(\.id)).sorted().map { ($0, $0) }
-        return (model.apps.map { ($0.id, $0.name) } + missing).filter { query.isEmpty || $0.1.localizedCaseInsensitiveContains(query) }
+        return (model.apps.map { ($0.id, $0.name) } + missing).filter { (!onlyHidden || model.preferences.hiddenAppIDs.contains($0.0)) && (query.isEmpty || $0.1.localizedCaseInsensitiveContains(query)) }
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -16,11 +17,14 @@ struct HiddenApplicationsView: View {
             HStack {
                 Text(model.text("隐藏应用") + "：\(model.preferences.hiddenAppIDs.count)").foregroundStyle(.secondary)
                 Spacer()
+                Toggle(model.text("仅看已隐藏"), isOn: $onlyHidden).toggleStyle(.checkbox)
                 Button(model.text("显示全部应用")) { model.showAllApplications() }.disabled(model.preferences.hiddenAppIDs.isEmpty || model.importInProgress)
             }
             LazyVStack(spacing: 8) {
                 ForEach(applications, id: \.0) { id, name in
                     HStack {
+                        if let app = model.app(for: id) { PreviewAppIcon(model: model, app: app).frame(width: 28, height: 28) }
+                        else { Image(systemName: "app.dashed").frame(width: 28, height: 28).foregroundStyle(.secondary) }
                         Text(name).lineLimit(1)
                         Spacer()
                         Button(model.text(model.preferences.hiddenAppIDs.contains(id) ? "显示应用" : "隐藏应用")) {
@@ -127,7 +131,7 @@ private struct BackupPreviewView: View {
                             profile(other, title: model.text(layout.activeLayoutIsFullscreen == true ? "小窗口布局" : "全屏布局"))
                         }
                     }
-                }.frame(maxHeight: 300)
+                }.frame(minHeight: 260, maxHeight: .infinity)
             } else if let failure { Text(failure).foregroundStyle(.secondary) }
             else { ProgressView() }
             Text(model.text("恢复前会自动备份当前布局；扫描不完整时不会覆盖。"))
@@ -138,7 +142,13 @@ private struct BackupPreviewView: View {
                 Button(model.text("恢复此备份")) { model.onRestoreHistory?(record.url); dismiss() }
                     .disabled(layout == nil || model.importInProgress || model.onRestoreHistory == nil)
             }
-        }.padding(24).frame(width: 500)
+        }.padding(24).frame(minWidth: 520, idealWidth: 600, maxWidth: .infinity, minHeight: 500, idealHeight: 620, maxHeight: .infinity)
+        .background(ResizableSheet(minimum: NSSize(width: 520, height: 500)))
+        .overlay(alignment: .bottomTrailing) {
+            WindowResizeHandle().frame(width: 22, height: 22)
+                .background { Image(systemName: "arrow.up.left.and.arrow.down.right").font(.system(size: 9)).foregroundStyle(.secondary).allowsHitTesting(false) }
+                .padding(3).help(model.text("拖动右下角调整窗口大小"))
+        }
         .task(id: record.id) {
             let file = record.url
             let read = Task.detached(priority: .utility) { try LayoutStore.read(file) }
@@ -156,11 +166,29 @@ private struct BackupPreviewView: View {
             Text(title).font(.headline)
             Text("\(count) " + model.text("个应用") + " · \(folders.count) " + model.text("个文件夹") + " · \(profile.pages.count) " + model.text("页"))
                 .foregroundStyle(.secondary)
-            ForEach(Array(items.prefix(12))) { item in
-                if item.kind == .folder { Text("▦ " + (item.title ?? model.text("新建文件夹")) + " (\(item.children.count))") }
-                else { Text(model.app(for: item.appID ?? "")?.name ?? item.appID ?? item.id) }
-            }
-            if items.count > 12 { Text("…").foregroundStyle(.secondary) }
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], alignment: .leading, spacing: 5) {
+                ForEach(Array(items.prefix(6))) { item in
+                    if item.kind == .folder { Text("▦ " + (item.title ?? model.text("新建文件夹")) + " (\(item.children.count))").lineLimit(1) }
+                    else { Text(model.app(for: item.appID ?? "")?.name ?? item.appID ?? item.id).lineLimit(1) }
+                }
+            }.font(.callout)
+            if items.count > 6 { Text("…").foregroundStyle(.secondary) }
         }
+    }
+}
+
+/// SwiftUI sheets inherit a fitted size unless their host explicitly permits resizing.
+struct ResizableSheet: NSViewRepresentable {
+    var minimum: NSSize
+    func makeNSView(context: Context) -> NSView { let view = SheetResizeView(); view.minimum = minimum; return view }
+    func updateNSView(_ view: NSView, context: Context) {}
+}
+private final class SheetResizeView: NSView {
+    var minimum = NSSize(width: 520, height: 500)
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        window?.styleMask.insert(.resizable)
+        window?.contentMinSize = minimum
+        window?.minSize = minimum
     }
 }

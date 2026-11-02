@@ -1,6 +1,25 @@
+# 3.14.0 — 2026-11-02
+
+- Guard empty application names and malformed folder merges. Use a private, no-follow installer lock and UID-scoped process matching; preserve personal-directory installations and fall back when shared installation is unavailable.
+- Resize backup previews, adapt the settings sidebar to language and text scale, share actual label styles with comparison previews, and add settings search, scoped reset, live appearance preview and hidden-only filtering with app icons.
+- Set an icon cache budget of 48 MiB / 160 entries, render immutable thumbnails sized for current scale and magnification on the serial worker and remove full-catalog warmup. Disable pointer tracking when hover magnification is off. Debounce FSEvents discovery; retain incomplete-scan layout protection.
+- Separate hide-after-launch from desktop-click dismissal, preserving migrated preferences.
+- Add Space app metadata, package/path/Terminal context actions, confirmed app recycling, a bounded arithmetic parser and confirmed system commands. Empty Trash is restricted to the current user's local Trash. Lock Screen explains the native keyboard shortcut when CGSession is unavailable.
+- Add user-facing Chinese release summaries alongside developer records. No claim is made about a fixed memory-saving percentage or measured trackpad frame rate.
+
+<!-- summary-zh -->
+- 修复特殊应用名称及异常合并数据的崩溃隐患，改进安装锁、多用户处理与安装路径选择。
+- 放大备份预览；设置支持搜索、本页重置、隐藏筛选和外观实时预览。大字号侧栏与大小对比更准确。
+- 图标缓存有容量上限，关闭悬停放大后停止对应追踪，安装或卸载应用后自动刷新。
+- 新增空格速览、右键高级操作、算式计算，以及执行前确认的系统指令；启动后自动收起可独立设置。
+- 新系统无法直接锁屏时提示系统快捷键；清空废纸篓仅处理本机当前用户目录，无法撤销。
+
 # 3.13.1 — 2026-11-02
 
 - Leave the folder navigation context when hiding its final visible child, so returning to the root free canvas uses root coordinates. Preserve the hidden folder and positions in saved layouts.
+
+<!-- summary-zh -->
+修复隐藏文件夹内最后一个应用后，返回主界面时位置不正确的问题。原分组和坐标继续保留。
 
 # 3.13.0 — 2026-11-02
 
@@ -11,12 +30,22 @@
 - Browse automatic and manual backup history, preview both layouts, and restore through validated import. Cleanup moves older automatic backups to Trash, retains the latest 20, and preserves manual snapshots.
 - Generate in-app update history from the bundled CHANGELOG.
 
+<!-- summary-zh -->
+- 新建文件夹保留原位置，方向键按照图标实际位置导航。
+- 新增撤销／重做、隐藏应用管理，以及可预览和恢复的备份历史。
+- 全屏与小窗口继续独立保存布局。
+
 # 3.12.2 — 2026-11-01
 
 - Preserve unknown applications, folders and positions in both layouts when organizing after incomplete discovery. Archive before the first write during an untrusted inventory and before confirmed removals; stop safely if the backup fails.
 - Stage clean app bundles and verify signatures before replacement. Roll back the prior bundle and backed-up user state if installed verification or launch checks fail; serialize local installations.
 - Run source tests and signed app builds on every main-branch push and pull request, including Python installer failure-injection tests.
 - Measure search independently with an optimized benchmark. Prepare immutable pinyin/alias indices alongside discovery on a background task; keep low-latency queries synchronous and commit inventory/index together with generation checks.
+
+<!-- summary-zh -->
+- 扫描不完整时保护原布局，整理和升级前自动备份。
+- 安装失败时恢复旧版本，并加强自动检查。
+- 在后台准备搜索索引，减少界面等待。
 
 # 3.12.1 — 2026-11-01
 

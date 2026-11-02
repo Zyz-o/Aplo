@@ -49,7 +49,23 @@ struct SettingsView: View {
     @State private var category: SettingsCategory = .general
     @State private var legacyExpanded = false
     @State private var scalePreview = false
-    private var version: String { Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "3.13.1" }
+    @State private var settingsQuery = ""
+    @State private var resettingPage = false
+    private var sidebarWidth: CGFloat {
+        let font = NSFont.systemFont(ofSize: model.preferences.textPoints(13), weight: .semibold)
+        let longest = SettingsCategory.allCases.map { (model.text($0.title) as NSString).size(withAttributes: [.font: font]).width }.max() ?? 100
+        return max(190, min(300, ceil(longest) + 122))
+    }
+    private var matchingCategories: [SettingsCategory] {
+        let keywords: [SettingsCategory: String] = [
+            .general: "显示 窗口 语言 分类 排列 程序坞 桌面 收起 display window language categories dock launch hide",
+            .appearance: "主题 背景 透明度 字体 颜色 图标 大小 动画 appearance background transparency font color icon size animation",
+            .shortcuts: "快捷键 滚动 翻页 灵敏度 keyboard shortcut scroll sensitivity",
+            .sound: "声音 音效 音量 sound volume", .hidden: "隐藏 应用 hidden apps",
+            .backup: "备份 恢复 导入 历史 backup restore import history", .updates: "更新 内容 update release", .about: "关于 版本 许可 about license version"]
+        return SettingsCategory.allCases.filter { settingsQuery.isEmpty || (model.text($0.title) + " " + (keywords[$0] ?? "")).localizedCaseInsensitiveContains(settingsQuery) }
+    }
+    private var version: String { Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "3.14.0" }
     private var appIcon: NSImage {
         Bundle.main.url(forResource: "AppIcon", withExtension: "icns").flatMap { NSImage(contentsOf: $0) }
             ?? NSImage(systemSymbolName: "square.grid.2x2", accessibilityDescription: nil)!
@@ -63,6 +79,9 @@ struct SettingsView: View {
                 HStack {
                     Text(model.text(category.title)).font(.system(size: model.preferences.textPoints(24), weight: .semibold)).allowsHitTesting(false)
                     Spacer()
+                    if [.general, .appearance, .shortcuts, .sound].contains(category) {
+                        Button(model.text("恢复本页默认")) { resettingPage = true }.controlSize(.small)
+                    }
                     Button { model.closeSettings() } label: {
                         Image(systemName: "xmark").font(.system(size: model.preferences.textPoints(14), weight: .medium))
                             .frame(width: 32, height: 32)
@@ -71,11 +90,15 @@ struct SettingsView: View {
                 }.background { WindowDragHandle(enabled: !model.isFullscreen) }
                 MessageBanner(model: model)
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 16) { detail }
+                    VStack(alignment: .leading, spacing: 12) { detail }
                         .frame(maxWidth: .infinity, alignment: .leading).padding(.bottom, 8)
-                }.scrollIndicators(.hidden)
-            }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity)
+                }.scrollIndicators(.hidden).id(category)
+            }.padding(20).frame(maxWidth: .infinity, maxHeight: .infinity)
         }.background(.ultraThinMaterial)
+            .confirmationDialog(model.text("恢复本页默认"), isPresented: $resettingPage) {
+                Button(model.text("恢复本页默认")) { resetPage() }
+                Button(model.text("取消"), role: .cancel) {}
+            } message: { Text(model.text("仅重置当前页的偏好。个人布局、隐藏应用、快捷键与备份不会改变。")) }
             .sheet(isPresented: $scalePreview, onDismiss: { model.presentingAppearancePreview = false }) {
                 ScalePreview(model: model)
             }
@@ -90,8 +113,10 @@ struct SettingsView: View {
                     Text(model.text("版本 \(version)")).font(.system(size: model.preferences.textPoints(11))).foregroundStyle(.secondary)
                 }
             }.padding(.horizontal, 6).padding(.top, 8).padding(.bottom, 6)
-            VStack(spacing: 5) {
-                ForEach(SettingsCategory.allCases, id: \.self) { section in
+            TextField(model.text("搜索设置"), text: $settingsQuery).textFieldStyle(.roundedBorder)
+            ScrollView {
+              VStack(spacing: 5) {
+                ForEach(matchingCategories, id: \.self) { section in
                     Button {
                         if model.recordingShortcut { model.cancelRecording() }
                         category = section
@@ -100,7 +125,7 @@ struct SettingsView: View {
                             Image(systemName: section.icon).font(.system(size: model.preferences.textPoints(14), weight: .semibold))
                                 .foregroundStyle(model.preferences.colorVision == .standard ? Color.white : Color(nsColor: .windowBackgroundColor)).frame(width: 28, height: 28)
                                 .background((model.preferences.colorVision == .standard ? section.color : model.accentColor).gradient, in: RoundedRectangle(cornerRadius: 8))
-                            Text(model.text(section.title)).font(.system(size: model.preferences.textPoints(13), weight: category == section ? .semibold : .regular))
+                            Text(model.text(section.title)).lineLimit(1).fixedSize(horizontal: true, vertical: false).layoutPriority(1).font(.system(size: model.preferences.textPoints(13), weight: category == section ? .semibold : .regular))
                             Spacer(minLength: 0)
                         }.padding(.horizontal, 10).padding(.vertical, 9)
                             .background(category == section ? model.accentColor.opacity(0.16) : .clear,
@@ -109,10 +134,12 @@ struct SettingsView: View {
                     }.buttonStyle(.plain).accessibilityLabel(model.text(section.title + "设置"))
                         .accessibilityAddTraits(category == section ? .isSelected : [])
                 }
-            }
-            Spacer()
+              }
+              if matchingCategories.isEmpty { Text(model.text("没有匹配的设置")).foregroundStyle(.secondary).padding(.top, 12) }
+            }.scrollIndicators(.hidden)
+            Spacer(minLength: 0)
             Text(model.text("设置自动保存")).font(.system(size: model.preferences.textPoints(11))).foregroundStyle(.tertiary).padding(.horizontal, 10)
-        }.padding(14).frame(width: 190).frame(maxHeight: .infinity)
+        }.padding(14).frame(width: sidebarWidth).frame(maxHeight: .infinity)
             .background(.primary.opacity(0.025))
     }
 
@@ -133,7 +160,8 @@ struct SettingsView: View {
                 Picker(model.text("收起方式"), selection: preference(\.dismissStyle)) {
                     ForEach(LauncherDismissStyle.allCases, id: \.self) { Text(model.text($0.title)).tag($0) }
                 }
-                note("固定后保持在当前桌面，其他应用可覆盖它。选择仅按 Esc 收起后，点击桌面和启动应用都会保留窗口。")
+                switchRow("启动后自动收起", key: \.launchAutoHide)
+                note("收起方式控制点击桌面时的行为；启动应用后是否保留窗口由独立开关控制。")
                 Picker(model.text("工具栏位置"), selection: preference(\.toolbarPosition)) {
                     ForEach(LauncherToolbarPosition.allCases, id: \.self) { Text(model.text($0.title)).tag($0) }
                 }.pickerStyle(.segmented)
@@ -186,6 +214,7 @@ struct SettingsView: View {
                 note("连续滚动时，系统应用在上下模式的末尾、左右模式的最右侧；只调整显示顺序，保留手动布局与文件夹。")
             }
         case .appearance:
+            AppearanceLivePreview(model: model)
             card("主题", icon: "circle.lefthalf.filled") {
                 Picker(model.text("外观主题"), selection: preference(\.appearance)) {
                     ForEach(LauncherAppearance.allCases, id: \.self) { Text(model.text($0.title)).tag($0) }
@@ -354,8 +383,11 @@ struct SettingsView: View {
         case .updates:
             ForEach(ReleaseNote.bundled) { entry in
                 card(entry.title, icon: "sparkles") {
-                    Text(.init(entry.body)).font(.system(size: model.preferences.textPoints(13)))
+                    Text(.init(entry.summary(language: model.preferences.language))).font(.system(size: model.preferences.textPoints(13)))
                         .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
+                    DisclosureGroup(model.text("开发者详细记录（英文）")) {
+                        Text(.init(entry.developerDetails)).font(.system(size: model.preferences.textPoints(11))).foregroundStyle(.secondary).textSelection(.enabled)
+                    }
                 }
             }
         case .about:
@@ -385,6 +417,37 @@ struct SettingsView: View {
         }
     }
 
+    private func resetPage() {
+        let defaults = LauncherPreferences()
+        model.updatePreferences { p in
+            switch category {
+            case .general:
+                p.entryLocation = defaults.entryLocation; p.toolbarPosition = defaults.toolbarPosition
+                p.dismissStyle = defaults.dismissStyle; p.pinToDesktop = defaults.pinToDesktop
+                p.launchAutoHide = defaults.launchAutoHide; p.dockVisibility = defaults.dockVisibility
+                p.language = defaults.language; p.systemAppsLast = defaults.systemAppsLast
+            case .appearance:
+                p.labelFontFamily = defaults.labelFontFamily; p.labelWeight = defaults.labelWeight
+                p.labelColor = defaults.labelColor; p.labelColorHex = defaults.labelColorHex
+                p.iconScalePercent = defaults.iconScalePercent; p.textScalePercent = defaults.textScalePercent
+                p.backgroundStyle = defaults.backgroundStyle; p.backgroundTransparency = defaults.backgroundTransparency
+                p.appearance = defaults.appearance; p.showNames = defaults.showNames
+                p.brandNamePercent = defaults.brandNamePercent; p.colorVision = defaults.colorVision
+                p.magnificationEnabled = defaults.magnificationEnabled; p.animationsEnabled = defaults.animationsEnabled
+                p.windowShadowEnabled = defaults.windowShadowEnabled
+            case .shortcuts:
+                p.swipeEnabled = defaults.swipeEnabled; p.reversePaging = defaults.reversePaging
+                p.pagingDirection = defaults.pagingDirection; p.navigationStyle = defaults.navigationStyle
+                p.gestureSensitivity = defaults.gestureSensitivity
+            case .sound:
+                p.soundEffectsEnabled = defaults.soundEffectsEnabled; p.soundOpen = defaults.soundOpen
+                p.soundClose = defaults.soundClose; p.soundNavigation = defaults.soundNavigation
+                p.soundVolume = defaults.soundVolume
+            default: break
+            }
+        }
+    }
+
     private func soundRow(_ title: String, key: WritableKeyPath<LauncherPreferences, String>) -> some View {
         HStack {
             Text(model.text(title))
@@ -410,13 +473,19 @@ struct SettingsView: View {
         Binding(get: { model.preferences[keyPath: key] }, set: { value in model.updatePreferences { $0[keyPath: key] = value } })
     }
     private func note(_ text: String) -> some View {
-        Text(model.text(text)).font(.system(size: model.preferences.textPoints(11))).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        Group {
+            if text.count > 44 {
+                DisclosureGroup(model.text("了解更多")) {
+                    Text(model.text(text)).fixedSize(horizontal: false, vertical: true)
+                }
+            } else { Text(model.text(text)).fixedSize(horizontal: false, vertical: true) }
+        }.font(.system(size: model.preferences.textPoints(11))).foregroundStyle(.secondary)
     }
     private func card<Content: View>(_ title: String, icon: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 11) {
             Label(model.text(title), systemImage: icon).font(.system(size: model.preferences.textPoints(14), weight: .semibold))
             content().font(.system(size: model.preferences.textPoints(12)))
-        }.padding(18).frame(maxWidth: .infinity, alignment: .leading)
+        }.padding(14).frame(maxWidth: .infinity, alignment: .leading)
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
             .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.primary.opacity(0.065)))
     }

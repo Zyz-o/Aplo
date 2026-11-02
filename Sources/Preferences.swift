@@ -123,6 +123,7 @@ struct LauncherPreferences: Codable, Equatable {
     var labelColorHex = "#FFFFFF"
     var entryLocation: LauncherEntryLocation = .both
     var toolbarPosition: LauncherToolbarPosition = .bottom
+    var launchAutoHide = true
     var dismissStyle: LauncherDismissStyle = .outsideClick
     var pinToDesktop = false
     var magnificationEnabled = true
@@ -161,7 +162,7 @@ struct LauncherPreferences: Codable, Equatable {
     private enum CodingKeys: String, CodingKey {
         case hiddenAppIDs
         case labelFontFamily, labelWeight, labelColor, labelColorHex
-        case entryLocation, toolbarPosition, dismissStyle, pinToDesktop, magnificationEnabled
+        case entryLocation, toolbarPosition, dismissStyle, launchAutoHide, pinToDesktop, magnificationEnabled
         case arrangement, compactArrangement
         case brandIconPercent, brandNamePercent
         case dockVisibility, language, colorVision, iconScalePercent, textScalePercent, systemAppsLast
@@ -180,6 +181,7 @@ struct LauncherPreferences: Codable, Equatable {
         entryLocation = (try? c.decode(LauncherEntryLocation.self, forKey: .entryLocation)) ?? .both
         toolbarPosition = (try? c.decode(LauncherToolbarPosition.self, forKey: .toolbarPosition)) ?? .bottom
         dismissStyle = (try? c.decode(LauncherDismissStyle.self, forKey: .dismissStyle)) ?? .outsideClick
+        launchAutoHide = (try? c.decode(Bool.self, forKey: .launchAutoHide)) ?? (dismissStyle == .outsideClick)
         pinToDesktop = (try? c.decode(Bool.self, forKey: .pinToDesktop)) ?? false
         magnificationEnabled = (try? c.decode(Bool.self, forKey: .magnificationEnabled)) ?? true
         arrangement = (try? c.decode(LauncherArrangement.self, forKey: .arrangement)) ?? .grid

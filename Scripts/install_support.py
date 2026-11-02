@@ -41,3 +41,49 @@ def replace_bundle(source, destination, verify, activate, deactivate=lambda path
     finally:
         if not keep_recovery:
             shutil.rmtree(staging, ignore_errors=True)
+
+
+def acquire_install_lock(directory):
+    """Private, UID-owned lock; reject symlink directories/files and hard links."""
+    import os, stat, fcntl
+    directory = Path(directory)
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    dirfd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        metadata = os.fstat(dirfd)
+        if metadata.st_uid != os.getuid():
+            raise ValueError('Install lock directory belongs to another user')
+        os.fchmod(dirfd, 0o700)
+        fd = os.open('install.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600, dir_fd=dirfd)
+    finally:
+        os.close(dirfd)
+    try:
+        metadata = os.fstat(fd)
+        if metadata.st_uid != os.getuid() or not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1:
+            raise ValueError('Unsafe install lock')
+        os.fchmod(fd, 0o600)
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return os.fdopen(fd, 'r+')
+    except BaseException:
+        os.close(fd)
+        raise
+
+
+def owned_process_ids(rows, executables, uid):
+    result = []
+    for row in rows.splitlines():
+        parts = row.strip().split(None, 2)
+        if len(parts) == 3 and parts[0].isdigit() and parts[1].isdigit():
+            if int(parts[1]) == uid and parts[2] in executables:
+                result.append(int(parts[0]))
+    return result
+
+
+def install_destination(shared, personal, uid):
+    import os
+    shared, personal = Path(shared), Path(personal)
+    if personal.exists():
+        return personal
+    if os.access(shared.parent, os.W_OK) and (not shared.exists() or shared.stat().st_uid == uid):
+        return shared
+    return personal

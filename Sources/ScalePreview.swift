@@ -65,9 +65,10 @@ struct ScalePreview: View {
             HStack(alignment: .top, spacing: 16) {
                 ForEach(Array(model.apps.prefix(2))) { app in
                     VStack(spacing: 5) {
-                        Image(nsImage: model.icon(for: app)).resizable().interpolation(.high)
+                        PreviewAppIcon(model: model, app: app)
                             .frame(width: preferences.iconPoints(fullscreen: model.isFullscreen), height: preferences.iconPoints(fullscreen: model.isFullscreen))
-                        Text(app.name).font(.system(size: preferences.textPoints(14), weight: .medium))
+                        Text(app.name).font(LauncherModel.applicationLabelFont(preferences))
+                            .foregroundStyle(LauncherModel.applicationLabelColor(preferences))
                             .lineLimit(2).multilineTextAlignment(.center)
                     }.frame(maxWidth: .infinity)
                 }
@@ -75,5 +76,44 @@ struct ScalePreview: View {
         }.padding(16).frame(maxWidth: .infinity, alignment: .topLeading)
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
             .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.primary.opacity(0.10)))
+    }
+}
+
+struct PreviewAppIcon: View {
+    let model: LauncherModel
+    let app: InstalledApp
+    @StateObject private var delivery = TileDragFeedback()
+    var body: some View {
+        Image(nsImage: model.icon(for: app, notifying: delivery)).resizable().interpolation(.high)
+    }
+}
+
+struct AppearanceLivePreview: View {
+    @ObservedObject var model: LauncherModel
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label(model.text("实时预览"), systemImage: "eye").font(.headline)
+            HStack(spacing: 24) {
+                ForEach(Array(model.apps.prefix(3))) { app in
+                    VStack(spacing: 6) {
+                        PreviewAppIcon(model: model, app: app)
+                            .frame(width: min(90, model.preferences.iconPoints(fullscreen: model.isFullscreen)), height: min(90, model.preferences.iconPoints(fullscreen: model.isFullscreen)))
+                        if model.preferences.showNames {
+                            Text(app.name).font(model.applicationLabelFont).foregroundStyle(model.applicationLabelColor)
+                                .lineLimit(1)
+                        }
+                    }.frame(maxWidth: .infinity)
+                }
+            }.padding(18).frame(maxWidth: .infinity, minHeight: 142)
+                .background {
+                    ZStack {
+                        if model.preferences.backgroundStyle == .glass { VisualEffectBackground() }
+                        Color(nsColor: .windowBackgroundColor).opacity(model.preferences.backgroundStyle == .glass ? 1 - model.preferences.backgroundTransparency : 1)
+                    }.opacity(reduceTransparency ? 1 : 1 - model.preferences.backgroundTransparency)
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+                .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.primary.opacity(0.10)))
+        }
     }
 }

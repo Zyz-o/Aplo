@@ -16,6 +16,10 @@ A native macOS application launcher built with Swift, SwiftUI and AppKit.
 - 可隐藏应用并在设置中管理，保留其原分组及位置。
 - JSON 布局备份、自动备份历史、手动快照与双布局预览恢复，以及旧版系统 Launchpad 数据库导入。清理保留最近 20 份自动备份及所有手动快照，旧自动备份移至废纸篓。
 
+浏览时把指针移到应用上按 **空格**，或在右键菜单选择“应用速览”，查看版本、架构和包体积。右键还可显示包内容、拷贝路径、打开所在目录的终端，以及确认后移至废纸篓（系统应用不可移除）。
+
+搜索框支持 `= (2+3)*4` 等基本算式，回车拷贝结果；支持 `lock`、`sleep`、`trash`（也可加 `/` 前缀），执行前都显示确认，默认按钮是取消。`trash` 仅清空当前用户 `~/.Trash`，永久删除且无法撤销，不处理外置磁盘。系统若拒绝访问，不会申请完全磁盘访问权限。新 macOS 缺少 `CGSession` 时，`lock` 会提示使用 **Control + Command + Q**；不会用关闭显示器冒充锁屏。未提供最近打开栏与 ⌘1–⌘9 启动。
+
 默认快捷键 **Control + Option + Space** 显示或收起；**Control + Command + F** 切换全屏和小窗口。设置可通过面板齿轮或菜单栏打开。滚动期间暂停悬停放大，停下后恢复。
 
 ## 安装与构建
@@ -30,7 +34,7 @@ zsh build.sh
 zsh Scripts/install-local.sh
 ```
 
-安装脚本会备份已有同身份应用、布局和偏好，再更新 `/Applications/Aplo.app`。请不要同时运行多个副本，以免争用快捷键。
+安装脚本会备份已有同身份应用、布局和偏好，再更新 `/Applications/Aplo.app`；共享目录不可写或属于其他用户时安装至 `~/Applications/Aplo.app`，已有用户目录安装会继续原路径。锁位于当前用户的私有缓存目录，进程检查限定当前 UID。请不要同时运行多个副本，以免争用快捷键。
 
 下载版为本机临时签名构建，**没有 Apple Developer ID 签名或公证**；macOS 可能阻止首次打开。它不等同于经过 Apple 公证的正式发行包。也可自行审阅并构建源码。
 
@@ -39,7 +43,7 @@ zsh Scripts/install-local.sh
 - 布局：`~/Library/Application Support/简启/layout.json`。
 - 偏好域及 bundle ID：`local.jianqi.SimpleLauncher`。
 - 原身份与历史路径保留，避免品牌改名后丢失已有设置。
-- 扫描 `/Applications`、`~/Applications` 和系统应用目录，不进入应用包内部；启动时异步预扫，频繁呼出时采用 20 秒最短扫描间隔。菜单栏“刷新应用列表”可立即强制刷新。
+- 扫描 `/Applications`、`~/Applications` 和系统应用目录，不进入应用包内部；启动时异步预扫，频繁呼出时采用 20 秒最短扫描间隔。安装目录由 FSEvents 监听并合并刷新，20 秒限频仍作为呼出时的兜底。菜单栏“刷新应用列表”可立即强制刷新。
 - 不添加登录启动项，不请求辅助功能或完全磁盘访问权限；应用不访问网络或记录搜索内容。
 - 全屏显示临时隐藏菜单栏和系统 Dock，关闭后恢复；不改写系统 Dock 布局设置。
 

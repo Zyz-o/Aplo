@@ -60,7 +60,7 @@ struct LauncherView: View {
               } else { Color(nsColor: .windowBackgroundColor) }
             }.opacity(reduceTransparency ? 1 : 1 - model.preferences.backgroundTransparency)
         }
-        .background { MagnificationSurface() }
+        .background { MagnificationSurface(enabled: model.preferences.magnificationEnabled && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion) }
         .clipShape(RoundedRectangle(cornerRadius: model.isFullscreen ? 0 : 22, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: model.isFullscreen ? 0 : 22, style: .continuous).strokeBorder(.primary.opacity(0.10)))
         .overlay(alignment: .bottomTrailing) {
@@ -75,6 +75,7 @@ struct LauncherView: View {
                     .padding(3).help(model.text("拖动右下角调整窗口大小"))
             }
         }
+        .sheet(item: $model.inspectingApp) { app in ApplicationInspector(model: model, app: app) }
         .tint(model.accentColor)
         .environment(\.locale, Locale(identifier: model.preferences.language.localeIdentifier))
     }
@@ -84,12 +85,13 @@ struct LauncherView: View {
             header.frame(maxWidth: model.gridWidth).padding(.bottom, 16)
             if model.preferences.toolbarPosition == .top { toolbar.padding(.bottom, 12) }
             MessageBanner(model: model)
+            if let result = model.inlineResult { InlineResultView(model: model, result: result) }
             if model.usesFreePlacement { freeContent }
             else if model.visibleItems.isEmpty {
                 VStack(spacing: 8) {
                     if model.initialDiscoveryPending { ProgressView().controlSize(.small) }
                     else { Image(systemName: "magnifyingglass").font(.system(size: model.preferences.textPoints(28), weight: .light)).foregroundStyle(.tertiary) }
-                    Text(model.text(model.initialDiscoveryPending ? "正在查找应用…" : model.isSearching ? "没有匹配的应用" : "没有找到已安装的应用"))
+                    Text(model.text(model.initialDiscoveryPending ? "正在查找应用…" : model.inlineResult != nil ? "结果显示在上方" : model.isSearching ? "没有匹配的应用" : "没有找到已安装的应用"))
                         .font(.system(size: model.preferences.textPoints(13))).foregroundStyle(.secondary)
                 }.frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if model.isContinuousScrolling {
@@ -385,6 +387,17 @@ struct LauncherView: View {
             if let appID = item.appID {
                 Divider()
                 Button(model.text("隐藏应用")) { model.setAppHidden(appID, hidden: true) }
+                if let app = model.app(for: appID) {
+                    Divider()
+                    Button(model.text("应用速览")) { model.inspectingApp = app }
+                    Button(model.text("显示包内容")) { NSWorkspace.shared.open(app.url.appendingPathComponent("Contents", isDirectory: true)) }
+                    Button(model.text("拷贝路径")) { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(app.url.path, forType: .string) }
+                    Button(model.text("在终端中打开所在目录")) {
+                        NSWorkspace.shared.open([app.url.deletingLastPathComponent()], withApplicationAt: URL(fileURLWithPath: "/System/Applications/Utilities/Terminal.app"), configuration: NSWorkspace.OpenConfiguration())
+                    }
+                    Button(model.text("移至废纸篓…"), role: .destructive) { model.onTrashApplication?(app) }
+                        .disabled(app.isSystemApplication || app.bundleIdentifier == AppCatalog.ownBundleIdentifier)
+                }
             }
         }
     }
@@ -542,7 +555,11 @@ struct LauncherTile: View, Equatable {
             .contentShape(Rectangle())
         }
         .zIndex(hovered ? 1 : 0)
-        .buttonStyle(LauncherPressStyle(animated: model.preferences.animationsEnabled && !reduceMotion)).onHover { if model.draggingID == nil && !model.editing { hovered = $0 } }.help(displayName)
+        .buttonStyle(LauncherPressStyle(animated: model.preferences.animationsEnabled && !reduceMotion)).onHover { if model.draggingID == nil && !model.editing {
+            hovered = $0
+            if $0 { model.hoveredAppID = item.appID }
+            else if model.hoveredAppID == item.appID { model.hoveredAppID = nil }
+        } }.help(displayName)
         .animation(reduceMotion || model.isContinuousScrolling || !model.preferences.animationsEnabled || model.draggingID != nil ? nil : .easeOut(duration: 0.12), value: hovered)
         .overlay {
             if keyboardSelected {
@@ -617,7 +634,7 @@ struct MessageBanner: View {
     }
 }
 
-private struct VisualEffectBackground: NSViewRepresentable {
+struct VisualEffectBackground: NSViewRepresentable {
     func makeNSView(context: Context) -> NSVisualEffectView {
         let view = NSVisualEffectView()
         view.material = .popover

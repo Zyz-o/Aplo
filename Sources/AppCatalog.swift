@@ -123,7 +123,7 @@ struct AppCatalog: Sendable {
                     info["CFBundleDisplayName"] as? String,
                     info["CFBundleName"] as? String,
                     candidate.deletingPathExtension().lastPathComponent
-                ].compactMap { $0 }.first(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })!
+                ].compactMap { $0 }.first(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) ?? identifier.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 } ?? "Unnamed App"
                 apps.append(InstalledApp(
                     id: identifier.flatMap { $0.isEmpty ? nil : $0 } ?? url.path,
                     name: name,

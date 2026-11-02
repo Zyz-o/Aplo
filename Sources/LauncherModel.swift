@@ -72,6 +72,23 @@ final class LauncherModel: ObservableObject {
     @Published private(set) var layout: LauncherLayout { didSet { cachedContainerItems = nil } }
     @Published private(set) var pageIndex = 0 { didSet { if oldValue != pageIndex { onNavigate?() } } }
     @Published private(set) var openFolderID: String? { didSet { cachedContainerItems = nil } }
+    var hoveredAppID: String?
+    @Published var inspectingApp: InstalledApp?
+    var onSystemCommand: ((SystemCommand) -> Void)?
+    var onTrashApplication: ((InstalledApp) -> Void)?
+    var inlineResult: InlineResult? { InlineResult.parse(query) }
+    func performInlineResult(_ result: InlineResult) {
+        switch result {
+        case .calculation(let value):
+            NSPasteboard.general.clearContents(); NSPasteboard.general.setString(value, forType: .string)
+            message = "计算结果已拷贝。"
+        case .command(let command): onSystemCommand?(command)
+        }
+    }
+    func inspectSelection() {
+        guard draggingID == nil, !editing else { return }
+        inspectingApp = (!keyboardSelectionActive ? hoveredAppID.flatMap { app(for: $0) } : nil) ?? selectedApp
+    }
     @Published var message: String?
     @Published var focusGeneration = 0
     @Published var shortcutAvailable = true
@@ -120,7 +137,11 @@ final class LauncherModel: ObservableObject {
     private let searchIndex = IntegratedSearch()
     private let catalog: AppCatalog
     let store: LayoutStore
-    private var icons: [String: NSImage] = [:]
+    private let icons: NSCache<NSString, CachedApplicationIcon> = {
+        let cache = NSCache<NSString, CachedApplicationIcon>()
+        cache.countLimit = 160; cache.totalCostLimit = 48 * 1024 * 1024
+        return cache
+    }()
     private let iconQueue: OperationQueue = {
         let queue = OperationQueue(); queue.name = "Aplo.IconPrefetch"
         queue.maxConcurrentOperationCount = 1; queue.qualityOfService = .utility
@@ -130,7 +151,6 @@ final class LauncherModel: ObservableObject {
     private var iconTokens: [String: UUID] = [:]
     private var iconWaiters: [String: [ObjectIdentifier: WeakTileFeedback]] = [:]
     private static let pendingIcon = NSImage(systemSymbolName: "app.dashed", accessibilityDescription: nil)!
-    private var iconWarmup: Task<Void, Never>?
     // Native scrolling owns the frame budget; no published changes per event.
     private var scrollBusyUntil: TimeInterval = 0
     func noteScrollInteraction() { scrollBusyUntil = ProcessInfo.processInfo.systemUptime + 0.15 }
@@ -288,21 +308,25 @@ final class LauncherModel: ObservableObject {
     }
     func icon(for app: InstalledApp, notifying feedback: TileDragFeedback? = nil, prewarm: Bool = false) -> NSImage {
         let path = app.url.path
-        if let image = icons[path] { return image }
+        let pixelSize = IconRaster.pixelSize(points: preferences.iconPoints(fullscreen: isFullscreen),
+                                             scale: max(2, NSScreen.main?.backingScaleFactor ?? 2))
+        let cached = icons.object(forKey: path as NSString)
+        if let cached, cached.pixels >= pixelSize { return cached.image }
+        let placeholder = cached?.image ?? Self.pendingIcon
         if let feedback { iconWaiters[path, default: [:]][ObjectIdentifier(feedback)] = WeakTileFeedback(feedback) }
         if let job = iconJobs[path] {
             if !prewarm { job.queuePriority = .veryHigh }
-            return Self.pendingIcon
+            return placeholder
         }
         let token = UUID(); iconTokens[path] = token
         let job = BlockOperation { [weak self] in
             let delivery = autoreleasepool {
-                let image = NSWorkspace.shared.icon(forFile: path)
-                return IconDelivery(image: (image.copy() as? NSImage) ?? image)
+                let image = IconRaster.load(path: path, pixels: pixelSize)
+                return IconDelivery(image: image)
             }
             Task { @MainActor [weak self] in
                 guard let self, self.iconTokens[path] == token else { return }
-                self.icons[path] = delivery.image
+                self.icons.setObject(CachedApplicationIcon(image: delivery.image, pixels: pixelSize), forKey: path as NSString, cost: pixelSize * pixelSize * 4)
                 self.iconJobs.removeValue(forKey: path); self.iconTokens.removeValue(forKey: path)
                 let waiters = self.iconWaiters.removeValue(forKey: path)?.values ?? Dictionary<ObjectIdentifier, WeakTileFeedback>().values
                 for waiter in waiters { waiter.value?.objectWillChange.send() }
@@ -310,7 +334,7 @@ final class LauncherModel: ObservableObject {
         }
         job.queuePriority = prewarm ? .low : .veryHigh
         iconJobs[path] = job; iconQueue.addOperation(job)
-        return Self.pendingIcon
+        return placeholder
     }
 
     /// Synchronous entry retained for deterministic imports/tests. UI presentation uses requestRefresh.
@@ -390,24 +414,12 @@ final class LauncherModel: ObservableObject {
         if imagesChanged {
             iconQueue.cancelAllOperations(); iconJobs.removeAll(); iconTokens.removeAll()
             iconWaiters = iconWaiters.filter { snapshot.iconVersions[$0.key] != nil }
-            icons = icons.filter { snapshot.iconVersions[$0.key] != nil && snapshot.iconVersions[$0.key] == iconVersions[$0.key] }
+            for path in iconVersions.keys where snapshot.iconVersions[path] != iconVersions[path] { icons.removeObject(forKey: path as NSString) }
             iconVersions = snapshot.iconVersions
             for feedback in tileFeedback.values { feedback.objectWillChange.send() }
             // Same-path application updates still invalidate visible native icon identities.
             if !inventoryChanged { objectWillChange.send() }
-            iconWarmup?.cancel()
-            let inventory = apps.filter { icons[$0.url.path] == nil }
-            iconWarmup = Task { @MainActor [weak self] in
-                for app in inventory {
-                    guard !Task.isCancelled, let self else { return }
-                    while self.draggingID != nil || self.pageTransitionActive || self.scrollInteractionActive {
-                        try? await Task.sleep(for: .milliseconds(16))
-                        guard !Task.isCancelled else { return }
-                    }
-                    _ = self.icon(for: app, prewarm: true)
-                    try? await Task.sleep(for: .milliseconds(8))
-                }
-            }
+
         }
         var updated = layout
         updated.reconcile(with: apps.map(\.id), preservingMissing: !hasTrustedInventory)
@@ -630,10 +642,13 @@ final class LauncherModel: ObservableObject {
             guard let index = updated.pages[page].firstIndex(where: { $0.id == targetID }) else { continue }
             let target = updated.pages[page][index]
             if position == .center && target.kind == .folder {
-                updated.pages[page][index].children += source.kind == .app ? [source.appID!]
-                    : source.children
+                if source.kind == .app {
+                    guard let appID = source.appID else { endDrag(); return }
+                    updated.pages[page][index].children.append(appID)
+                } else { updated.pages[page][index].children += source.children }
             } else if position == .center && source.kind == .app && target.kind == .app {
-                updated.pages[page][index] = .folder(children: [target.appID!, source.appID!])
+                guard let targetID = target.appID, let sourceID = source.appID else { endDrag(); return }
+                updated.pages[page][index] = .folder(children: [targetID, sourceID])
             } else {
                 updated.pages[page].insert(source, at: index + (position == .after ? 1 : 0))
             }

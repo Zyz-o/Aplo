@@ -47,6 +47,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var importTask: Task<Void, Never>?
     private var importControl: LegacyReadControl?
     private var terminationSignal: DispatchSourceSignal?
+    private var applicationWatcher: ApplicationWatcher?
     private var minimizingWindow = false
     private var updatingEntryVisibility = false
     private var pageGesture = PageGesture()
@@ -93,6 +94,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         registerHotKey()
         applyAppearance()
         model.requestRefresh(resetSearch: false, minimumInterval: 20)
+        applicationWatcher = ApplicationWatcher(paths: AppCatalog(includeSystemApplications: true).roots.map(\.path)) { [weak self] in
+            self?.model.requestRefresh(resetSearch: false)
+        }
         if preview || CommandLine.arguments.contains("--show") { showPanel() }
     }
 
@@ -225,7 +229,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private func configureKeyboard() {
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .leftMouseDown]) { [weak self] event in
             guard let self, self.panel.isVisible, self.panel.isKeyWindow, NSApp.modalWindow == nil,
-                  !self.presentingSystemDialog else { return event }
+                  !self.presentingSystemDialog, self.panel.attachedSheet == nil else { return event }
             if self.model.presentingAppearancePreview { return event }
             if event.type == .leftMouseDown { self.model.keyboardSelectionActive = false; return event }
             if self.model.draggingID != nil { return event } // Let AppKit finish or cancel its native drag session.
@@ -263,6 +267,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 if Int(event.keyCode) == kVK_Escape { self.model.closeSettings(); return nil }
                 return event
             }
+            if Int(event.keyCode) == kVK_Space, !self.model.searchExpanded {
+                self.model.inspectSelection(); return nil
+            }
             switch Int(event.keyCode) {
             case kVK_Escape:
                 if self.model.searchExpanded { self.model.query = ""; self.model.searchExpanded = false }
@@ -270,7 +277,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 else if self.model.editing { self.model.toggleEditing() }
                 else { self.hidePanel(restorePrevious: true) }
             case kVK_Return, kVK_ANSI_KeypadEnter:
-                if let item = self.model.selectedItem, item.kind == .folder { self.model.open(item) }
+                if let result = self.model.inlineResult { self.model.performInlineResult(result) }
+                else if let item = self.model.selectedItem, item.kind == .folder { self.model.open(item) }
                 else if !self.model.editing, let app = self.model.selectedApp { self.launch(app) }
             case kVK_LeftArrow: self.model.moveSelection(by: -1)
             case kVK_RightArrow: self.model.moveSelection(by: 1)
@@ -434,6 +442,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     private func configureActions() {
         SoundManager.shared.bind(appStore: model)
+        model.onSystemCommand = { [weak self] command in self?.confirmSystemCommand(command) }
+        model.onTrashApplication = { [weak self] app in self?.confirmTrashApplication(app) }
         model.onAppearancePreviewChanged = { [weak self] in
             guard let self else { return }
             self.panel.hidesOnDeactivate = !self.preview && !self.updatingEntryVisibility && self.model.preferences.dismissStyle == .outsideClick && !self.model.presentingAppearancePreview
@@ -726,6 +736,52 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         panel.hidesOnDeactivate = !preview && model.preferences.dismissStyle == .outsideClick
         panel.makeKeyAndOrderFront(nil)
     }
+    private func confirmSystemCommand(_ command: SystemCommand) {
+        guard !presentingSystemDialog, panel.attachedSheet == nil else { return }
+        let alert = NSAlert(); alert.messageText = model.text(command.title)
+        alert.informativeText = model.text(command.available ? command.explanation : "当前系统没有可用的锁屏工具。请按 Control＋Command＋Q 锁屏；Aplo 不会代为关闭显示器。")
+        alert.alertStyle = command == .trash ? .warning : .informational
+        // Cancellation is the default; an accidental Return must never empty Trash or sleep.
+        let cancel = alert.addButton(withTitle: model.text("取消")); cancel.keyEquivalent = "\r"
+        if command.available {
+            let action = alert.addButton(withTitle: model.text(command.title)); action.keyEquivalent = ""
+            action.hasDestructiveAction = command == .trash
+        }
+        beginDialog()
+        alert.beginSheetModal(for: panel) { [weak self] response in
+            guard let self else { return }
+            self.endDialog()
+            guard response == .alertSecondButtonReturn, command.available else { return }
+            Task {
+                do {
+                    try await Task.detached(priority: .utility) { try ConfirmedSystemActions.run(command) }.value
+                    self.model.message = command == .trash ? "本机废纸篓已清空。" : nil
+                } catch { self.model.message = "操作未完成：" + error.localizedDescription }
+            }
+        }
+    }
+
+    private func confirmTrashApplication(_ app: InstalledApp) {
+        guard !presentingSystemDialog, panel.attachedSheet == nil, !app.isSystemApplication,
+              app.bundleIdentifier != AppCatalog.ownBundleIdentifier else { return }
+        let alert = NSAlert(); alert.messageText = model.text("移至废纸篓…")
+        alert.informativeText = "“\(app.name)”\n" + model.text("仅移动应用包，不删除个人数据。原分组与位置会按应用扫描结果更新。")
+        alert.alertStyle = .warning
+        let cancel = alert.addButton(withTitle: model.text("取消")); cancel.keyEquivalent = "\r"
+        let remove = alert.addButton(withTitle: model.text("移至废纸篓")); remove.keyEquivalent = ""; remove.hasDestructiveAction = true
+        beginDialog()
+        alert.beginSheetModal(for: panel) { [weak self] response in
+            guard let self else { return }; self.endDialog()
+            guard response == .alertSecondButtonReturn else { return }
+            Task {
+                do {
+                    try await Task.detached(priority: .utility) { try FileManager.default.trashItem(at: app.url, resultingItemURL: nil) }.value
+                    self.model.requestRefresh(resetSearch: false); self.model.message = "应用已移至废纸篓。"
+                } catch { self.model.message = "操作未完成：" + error.localizedDescription }
+            }
+        }
+    }
+
     private func exportBackup() {
         let dialog = NSSavePanel()
         dialog.title = model.text("导出 Aplo 布局")
@@ -824,7 +880,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             model.message = "“\(app.name)”已被移动或卸载，列表已刷新。"
             return
         }
-        if model.preferences.dismissStyle == .outsideClick { hidePanel() }
+        if model.preferences.launchAutoHide { hidePanel() }
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.activates = true
         NSWorkspace.shared.openApplication(at: app.url, configuration: configuration) { [weak self] _, error in
@@ -849,6 +905,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     func applicationWillTerminate(_ notification: Notification) {
         trace("terminate flushing preferences")
+        applicationWatcher?.stop(); applicationWatcher = nil
         model.flushPreferences()
         importTask?.cancel(); importControl?.cancel()
         saveCompactPosition()

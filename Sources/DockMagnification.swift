@@ -10,7 +10,15 @@ import QuartzCore
     private var scrollMonitor: Any?
     private var scrollBusyUntil: CFTimeInterval = 0
     private var waitingForScrollEnd = false
-    private init() {
+    private var enabled = false
+    private init() {}
+    func setEnabled(_ value: Bool) {
+        guard enabled != value else { return }
+        enabled = value
+        if !value {
+            if let scrollMonitor { NSEvent.removeMonitor(scrollMonitor) }
+            scrollMonitor = nil; reset(); return
+        }
         scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel, .mouseMoved]) { [weak self] event in
             if let window = event.window {
                 if event.type == .scrollWheel { self?.scrolling(window: window, point: event.locationInWindow) }
@@ -43,6 +51,7 @@ import QuartzCore
         }
     }
     func schedule(window: NSWindow?, point: NSPoint, followsLayout: Bool = false) {
+        guard enabled else { return }
         pendingWindow = window; pendingPoint = point; pendingFollowsLayout = followsLayout
         guard !waitingForScrollEnd else { return }
         guard !scheduled else { return }
@@ -58,6 +67,7 @@ import QuartzCore
     func register(_ view: MagnificationIconView) { entries[ObjectIdentifier(view)] = Entry(view: view) }
     func unregister(_ view: MagnificationIconView) { entries.removeValue(forKey: ObjectIdentifier(view)) }
     func update(window: NSWindow?, point: NSPoint) {
+        guard enabled else { return }
         var target: MagnificationIconView?
         var targetScale: CGFloat = 1
         for entry in entries.values {
@@ -168,15 +178,21 @@ struct DockMagnifiedIcon<Content: View>: NSViewRepresentable {
     }
 }
 struct MagnificationSurface: NSViewRepresentable {
+    var enabled: Bool
     func makeNSView(context: Context) -> PointerSurface { PointerSurface() }
-    func updateNSView(_ view: PointerSurface, context: Context) {}
+    func updateNSView(_ view: PointerSurface, context: Context) {
+        DockMagnificationController.shared.setEnabled(enabled)
+        if view.enabled != enabled { view.enabled = enabled; view.updateTrackingAreas() }
+    }
 }
 final class PointerSurface: NSView {
     private var tracking: NSTrackingArea?
+    var enabled = false
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
-        if let tracking { removeTrackingArea(tracking) }
+        if let tracking { removeTrackingArea(tracking) }; tracking = nil
+        guard enabled else { return }
         let value = NSTrackingArea(rect: .zero, options: [.inVisibleRect, .activeAlways, .mouseMoved, .mouseEnteredAndExited], owner: self, userInfo: nil)
         addTrackingArea(value); tracking = value
     }
@@ -197,7 +213,8 @@ final class PointerSurface: NSView {
 }
 
 @MainActor extension LauncherModel {
-    var applicationLabelFont: Font {
+    var applicationLabelFont: Font { Self.applicationLabelFont(preferences) }
+    static func applicationLabelFont(_ preferences: LauncherPreferences) -> Font {
         let size = preferences.textPoints(14)
         return LabelFontCache.resolve(key: "\(preferences.labelFontFamily)|\(preferences.labelWeight)|\(size)") {
         let weight: Font.Weight
@@ -216,7 +233,8 @@ final class PointerSurface: NSView {
         return .system(size: size, weight: weight)
         }
     }
-    var applicationLabelColor: Color {
+    var applicationLabelColor: Color { Self.applicationLabelColor(preferences) }
+    static func applicationLabelColor(_ preferences: LauncherPreferences) -> Color {
         switch preferences.labelColor {
         case .automatic:
             return preferences.backgroundTransparency > 0.7 && !NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency ? .white : .primary

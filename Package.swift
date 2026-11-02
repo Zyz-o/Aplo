@@ -8,7 +8,7 @@ let package = Package(
     targets: [
         .executableTarget(name: "Aplo", path: "Sources", linkerSettings: [
             .linkedFramework("AppKit"), .linkedFramework("SwiftUI"),
-            .linkedFramework("Carbon"), .linkedLibrary("sqlite3")
+            .linkedFramework("Carbon"), .linkedFramework("CoreServices"), .linkedLibrary("sqlite3")
         ]),
         .testTarget(name: "AploTests", dependencies: ["Aplo"], path: "Tests", exclude: ["test_installer.py"])
     ]

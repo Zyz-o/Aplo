@@ -4,7 +4,7 @@ import tempfile
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / 'Scripts'))
-from install_support import replace_bundle, RollbackFailure
+from install_support import replace_bundle, RollbackFailure, acquire_install_lock, owned_process_ids, install_destination
 
 
 class InstallerTests(unittest.TestCase):
@@ -69,6 +69,32 @@ class InstallerTests(unittest.TestCase):
         previous = list(self.old.parent.glob('.Aplo-install-*/previous.app'))
         self.assertEqual(len(previous), 1)
         self.assertEqual((previous[0] / 'version').read_text(), 'old')
+
+    def test_lock_rejects_symlink_and_hardlink(self):
+        directory = self.root / 'private'; directory.mkdir()
+        victim = self.root / 'victim'; victim.write_text('safe')
+        lock = directory / 'install.lock'; lock.symlink_to(victim)
+        with self.assertRaises(OSError): acquire_install_lock(directory)
+        self.assertEqual(victim.read_text(), 'safe')
+        lock.unlink()
+        import os
+        os.link(victim, lock)
+        with self.assertRaises(ValueError): acquire_install_lock(directory)
+        lock.unlink()
+        with acquire_install_lock(directory):
+            self.assertEqual(lock.stat().st_mode & 0o777, 0o600)
+
+    def test_process_matching_never_targets_other_users(self):
+        rows = '101 501 /Applications/Aplo.app/Contents/MacOS/Aplo\n102 502 /Applications/Aplo.app/Contents/MacOS/Aplo\n103 501 /Applications/Other.app/Contents/MacOS/Aplo'
+        self.assertEqual(owned_process_ids(rows, {'/Applications/Aplo.app/Contents/MacOS/Aplo'}, 501), [101])
+
+    def test_foreign_owned_shared_install_uses_personal_directory(self):
+        personal = self.root / 'Personal/Aplo.app'
+        self.assertEqual(install_destination(self.old, personal, self.old.stat().st_uid + 1), personal)
+
+    def test_existing_personal_install_remains_personal(self):
+        personal = self.root / 'Personal/Aplo.app'; personal.mkdir(parents=True)
+        self.assertEqual(install_destination(self.old, personal, self.old.stat().st_uid), personal)
 
 
 if __name__ == '__main__': unittest.main()

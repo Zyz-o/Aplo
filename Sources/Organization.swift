@@ -68,6 +68,16 @@ struct ReleaseNote: Identifiable, Sendable {
     let title: String
     let body: String
     var id: String { title }
+    var developerDetails: String {
+        body.components(separatedBy: "<!-- summary-zh -->").first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? body
+    }
+    func summary(language: LauncherLanguage) -> String {
+        if language.localeIdentifier.hasPrefix("en") { return developerDetails }
+        let sections = body.components(separatedBy: "<!-- summary-zh -->")
+        let source = sections.count > 1 ? sections[1].trimmingCharacters(in: .whitespacesAndNewlines)
+            : "此版本改进了应用的使用体验与稳定性。具体改动可展开详细记录查看。"
+        return AppStrings.text(source, language: language)
+    }
     static func parse(_ text: String) -> [ReleaseNote] {
         text.components(separatedBy: "\n# ").enumerated().compactMap { index, section in
             let section = index == 0 && section.hasPrefix("# ") ? String(section.dropFirst(2)) : section
