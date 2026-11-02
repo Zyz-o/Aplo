@@ -89,7 +89,7 @@ final class LauncherModel: ObservableObject {
         guard draggingID == nil, !editing else { return }
         inspectingApp = (!keyboardSelectionActive ? hoveredAppID.flatMap { app(for: $0) } : nil) ?? selectedApp
     }
-    @Published var message: String?
+    @Published var message: LocalizedMessage?
     @Published var focusGeneration = 0
     @Published var shortcutAvailable = true
     @Published var editing = false
@@ -259,7 +259,8 @@ final class LauncherModel: ObservableObject {
         draggingID = id
     }
     var canOrganize: Bool { !preferences.automaticCategories && editing && !isSearching && !showingSettings }
-    var shortcutLabel: String { shortcutAvailable ? layout.shortcut.displayName : "菜单栏打开" }
+    var shortcutDisplayName: String { layout.shortcut.localizedDisplayName(language: preferences.language) }
+    var shortcutLabel: String { shortcutAvailable ? shortcutDisplayName : text("菜单栏打开") }
     var dropDescription: String { if usesFreePlacement { return "拖动图标自由放置 · 整理菜单可返回网格" }; return dropHint ?? (openFolder == nil ? "拖到图标中心分组，边缘排序" : "拖放排序 · 右键可移出文件夹") }
 
     func updatePreferences(_ change: (inout LauncherPreferences) -> Void) {
@@ -397,7 +398,7 @@ final class LauncherModel: ObservableObject {
         hasTrustedInventory = snapshot.isComplete
         let inventory = snapshot.inventory(retaining: apps)
         if !snapshot.isComplete {
-            let warning = "部分应用暂时无法读取，已保留原布局；请稍后刷新重试。"
+            let warning: LocalizedMessage = "部分应用暂时无法读取，已保留原布局；请稍后刷新重试。"
             if message != warning { message = warning }
         }
         let inventoryChanged = apps != inventory
@@ -429,7 +430,7 @@ final class LauncherModel: ObservableObject {
         if openFolderID != nil && openFolder == nil { openFolderID = nil }
         if resetSearch { resetBrowsingState() }
         else if inventoryChanged { filter() }
-        if let startupMessage { message = startupMessage; self.startupMessage = nil }
+        if let startupMessage { message = LocalizedMessage(startupMessage); self.startupMessage = nil }
         pruneTileFeedback()
     }
 

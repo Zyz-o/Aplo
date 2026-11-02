@@ -533,9 +533,10 @@ struct LauncherTile: View, Equatable {
                         }.padding(4)
                     }.frame(width: iconSize, height: iconSize)
                         .overlay(alignment: .bottomTrailing) {
-                            if previewChildren == nil { Text("\(item.children.count)").font(.system(size: model.preferences.textPoints(8), weight: .semibold, design: .rounded))
+                            if previewChildren == nil { Text("\(item.children.count)").lineLimit(1).minimumScaleFactor(0.5).font(.system(size: model.preferences.textPoints(8), weight: .semibold, design: .rounded))
                                 .padding(.horizontal, 4).padding(.vertical, 2)
-                                .background(.regularMaterial, in: Capsule()).offset(x: 4, y: 3) }
+                                .frame(maxWidth: max(1, iconSize - 6))
+                                .background(.regularMaterial, in: Capsule()).padding(3) }
                         }
                 } else if let id = item.appID, let app = model.app(for: id) {
                     Image(nsImage: model.icon(for: app, notifying: dragFeedback)).resizable().interpolation(.high).frame(width: iconSize, height: iconSize)
@@ -621,7 +622,7 @@ struct MessageBanner: View {
             HStack(spacing: 5) {
                 if model.importInProgress { ProgressView().controlSize(.small) }
                 else { Image(systemName: "info.circle") }
-                Text(model.text(message)).lineLimit(2)
+                Text(message.localized(language: model.preferences.language)).lineLimit(2)
                 Spacer(minLength: 0)
                 if model.importInProgress {
                     Button(model.text("取消导入")) { model.onCancelImport?() }.buttonStyle(.plain)

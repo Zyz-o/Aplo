@@ -1,3 +1,15 @@
+# 3.14.1 — 2026-11-03
+
+- Store notification templates separately from interpolation arguments, localizing at render time. Preserve app names and system error details verbatim and support language changes while a message is visible.
+- Translate the empty-folder-name validation and display recorded / legacy shortcut key names according to the current language, without migrating saved bindings.
+- Inset folder count badges and constrain their width inside the icon, including small icons and large text.
+- Add localization regressions for import counts, shortcut confirmation, save/export/action/launch failures, literal percent markers and language switching.
+
+<!-- summary-zh -->
+- 修复英文提示中夹杂中文的问题；切换语言后，屏幕上的消息会同步更新，应用名和错误详情保留原文。
+- 补全文件夹空名称提示，快捷键的空格／回车名称随界面语言显示，原快捷键保持不变。
+- 文件夹数量角标移入图标内部，小图标或大字号下也不会向外溢出。
+
 # 3.14.0 — 2026-11-02
 
 - Guard empty application names and malformed folder merges. Use a private, no-follow installer lock and UID-scoped process matching; preserve personal-directory installations and fall back when shared installation is unavailable.

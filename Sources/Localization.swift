@@ -7,6 +7,14 @@ enum AppStrings {
     }
     private static let cache = TranslationCache()
     static let english: [String: String] = [
+        "文件夹名称不能为空。": "Folder name cannot be empty.",
+        "快捷键已设为 %@。": "Shortcut set to %@.",
+        "已导入 %@ 个应用，跳过 %@ 个未安装项目；原布局已备份。": "Imported %@ apps; skipped %@ missing items. The previous layout was backed up.",
+        "无法保存布局：%@": "Unable to save layout: %@",
+        "操作未完成：%@": "Operation not completed: %@",
+        "导出失败：%@": "Export failed: %@",
+        "“%@”已被移动或卸载，列表已刷新。": "“%@” was moved or removed. The app list was refreshed.",
+        "无法打开“%@”，请检查应用是否完整或有权限运行。": "Unable to open “%@”. Check the app is complete and permitted to run.",
         "关闭": "Close", "隐藏应用设置": "Hidden Applications settings",
         "结果显示在上方": "Result shown above",
         "启动后自动收起": "Hide after Launch",

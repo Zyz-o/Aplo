@@ -65,7 +65,7 @@ struct SettingsView: View {
             .backup: "备份 恢复 导入 历史 backup restore import history", .updates: "更新 内容 update release", .about: "关于 版本 许可 about license version"]
         return SettingsCategory.allCases.filter { settingsQuery.isEmpty || (model.text($0.title) + " " + (keywords[$0] ?? "")).localizedCaseInsensitiveContains(settingsQuery) }
     }
-    private var version: String { Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "3.14.0" }
+    private var version: String { Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "3.14.1" }
     private var appIcon: NSImage {
         Bundle.main.url(forResource: "AppIcon", withExtension: "icns").flatMap { NSImage(contentsOf: $0) }
             ?? NSImage(systemSymbolName: "square.grid.2x2", accessibilityDescription: nil)!
@@ -295,7 +295,7 @@ struct SettingsView: View {
         case .shortcuts:
             card("呼出快捷键", icon: "keyboard") {
                 HStack {
-                    Text(model.text(model.recordingShortcut ? "请按下新快捷键…" : model.layout.shortcut.displayName))
+                    Text(model.text(model.recordingShortcut ? "请按下新快捷键…" : model.shortcutDisplayName))
                         .font(.system(size: model.preferences.textPoints(16), weight: .medium, design: .monospaced))
                     Spacer()
                     Button(model.text(model.recordingShortcut ? "取消录制" : "录制快捷键")) {

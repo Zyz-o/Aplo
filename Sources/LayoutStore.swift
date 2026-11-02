@@ -10,6 +10,14 @@ struct ShortcutBinding: Codable, Equatable, Sendable {
         [(controlKey, "⌃"), (optionKey, "⌥"), (shiftKey, "⇧"), (cmdKey, "⌘")]
             .filter { modifiers & UInt32($0.0) != 0 }.map(\.1).joined() + keyName
     }
+    func localizedDisplayName(language: LauncherLanguage) -> String {
+        let special: [UInt32: String] = [UInt32(kVK_Space): "空格", UInt32(kVK_Return): "回车",
+            UInt32(kVK_ANSI_KeypadEnter): "回车", UInt32(kVK_Tab): "Tab",
+            UInt32(kVK_LeftArrow): "←", UInt32(kVK_RightArrow): "→", UInt32(kVK_UpArrow): "↑", UInt32(kVK_DownArrow): "↓"]
+        let name = special[keyCode].map { AppStrings.text($0, language: language) } ?? keyName
+        return [(controlKey, "⌃"), (optionKey, "⌥"), (shiftKey, "⇧"), (cmdKey, "⌘")]
+            .filter { modifiers & UInt32($0.0) != 0 }.map(\.1).joined() + name
+    }
     var isValid: Bool {
         let allowed = UInt32(controlKey | optionKey | shiftKey | cmdKey)
         return keyCode < 128 && ![54, 55, 56, 57, 58, 59, 60, 61, 62, 63].contains(keyCode)

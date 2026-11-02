@@ -126,7 +126,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         if let button = statusItem.button {
             button.image = NSImage(systemSymbolName: "square.grid.2x2", accessibilityDescription: "Aplo")
             button.image?.isTemplate = true
-            button.toolTip = "Aplo · \(model.layout.shortcut.displayName)"
+            button.toolTip = "Aplo · \(model.shortcutDisplayName)"
         }
         updateStatusMenu()
     }
@@ -161,7 +161,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         displayMode.keyEquivalentModifierMask = [.control, .command]
         displayMode.target = self
         menu.addItem(displayMode)
-        let shortcut = NSMenuItem(title: model.text("快捷键：\(model.layout.shortcut.displayName)"), action: nil, keyEquivalent: "")
+        let shortcut = NSMenuItem(title: model.text("快捷键：\(model.shortcutDisplayName)"), action: nil, keyEquivalent: "")
         shortcut.isEnabled = false
         menu.addItem(shortcut)
         let settings = NSMenuItem(title: model.text("设置与备份…"), action: #selector(openSettingsFromMenu), keyEquivalent: ",")
@@ -242,7 +242,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 if flags.contains(.control) { modifiers |= UInt32(controlKey) }
                 if flags.contains(.option) { modifiers |= UInt32(optionKey) }
                 if flags.contains(.shift) { modifiers |= UInt32(shiftKey) }
-                let labels: [Int: String] = [kVK_Space: "空格", kVK_Return: "回车", kVK_Tab: "Tab",
+                let labels: [Int: String] = [kVK_Space: "Space", kVK_Return: "Return", kVK_ANSI_KeypadEnter: "Return", kVK_Tab: "Tab",
                     kVK_LeftArrow: "←", kVK_RightArrow: "→", kVK_UpArrow: "↑", kVK_DownArrow: "↓"]
                 let name = labels[Int(event.keyCode)] ?? event.charactersIgnoringModifiers?.uppercased() ?? ""
                 let shortcut = ShortcutBinding(keyCode: UInt32(event.keyCode), modifiers: modifiers, keyName: name)
@@ -561,7 +561,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         if register(shortcut) == noErr {
             if model.saveShortcut(shortcut) {
                 model.shortcutAvailable = true
-                model.message = "快捷键已设为 \(shortcut.displayName)。"
+                model.message = "快捷键已设为 \(shortcut)。"
                 updateShortcutLabels()
                 return true
             }
@@ -756,7 +756,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 do {
                     try await Task.detached(priority: .utility) { try ConfirmedSystemActions.run(command) }.value
                     self.model.message = command == .trash ? "本机废纸篓已清空。" : nil
-                } catch { self.model.message = "操作未完成：" + error.localizedDescription }
+                } catch { self.model.message = "操作未完成：\(error.localizedDescription)" }
             }
         }
     }
@@ -777,7 +777,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 do {
                     try await Task.detached(priority: .utility) { try FileManager.default.trashItem(at: app.url, resultingItemURL: nil) }.value
                     self.model.requestRefresh(resetSearch: false); self.model.message = "应用已移至废纸篓。"
-                } catch { self.model.message = "操作未完成：" + error.localizedDescription }
+                } catch { self.model.message = "操作未完成：\(error.localizedDescription)" }
             }
         }
     }
@@ -869,7 +869,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                     self.model.message = "已导入 \(result.matchedCount) 个应用，跳过 \(result.skippedCount) 个未安装项目；原布局已备份。"
                 }
             } catch is CancellationError { self.model.message = "导入已取消，现有布局未改变。" }
-            catch { self.model.message = error.localizedDescription }
+            catch { self.model.message = .verbatim(error.localizedDescription) }
         }
     }
 
