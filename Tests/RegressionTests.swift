@@ -115,6 +115,27 @@ import XCTest
         XCTAssertFalse(source.icon === pending)
         withExtendedLifetime((modelSubscription, tileSubscription)) {}
     }
+    func testCachedIconLookupDoesNotRegisterWaitersOrPublishModel() async throws {
+        let (model, _, cleanup) = fixture(); defer { cleanup() }
+        let feedback = model.dragFeedback(for: "app:cached")
+        var modelChanges = 0; var tileChanges = 0
+        let modelSubscription = model.objectWillChange.sink { modelChanges += 1 }
+        let tileSubscription = feedback.objectWillChange.sink { tileChanges += 1 }
+        let app = InstalledApp(id: "cached", name: "Cached", url: URL(fileURLWithPath: "/nonexistent-aplo-cached-test.app"), bundleIdentifier: "cached")
+        let pending = model.icon(for: app, notifying: feedback)
+        for _ in 0..<250 {
+            if model.icon(for: app) !== pending { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        let loaded = model.icon(for: app)
+        XCTAssertFalse(loaded === pending)
+        // Repeated reads of a ready icon must not schedule work or wake the tile again.
+        for _ in 0..<200 { _ = model.icon(for: app, notifying: feedback) }
+        for _ in 0..<200 { _ = model.cachedIconIdentity(for: app) }
+        XCTAssertEqual(modelChanges, 0)
+        XCTAssertEqual(tileChanges, 1)
+        withExtendedLifetime((modelSubscription, tileSubscription)) {}
+    }
     func testNoticeTimerNeverDismissesReplacementErrors() async throws {
         let (model, defaults, cleanup) = fixture(); defer { cleanup() }
         model.noticeDuration = .milliseconds(20)

@@ -586,7 +586,7 @@ struct LauncherTile: View, Equatable {
                         LazyVGrid(columns: Array(repeating: GridItem(.fixed(iconSize * 0.23), spacing: 2), count: 3), spacing: 2) {
                             ForEach(Array((previewChildren ?? item.children).prefix(9)), id: \.self) { id in
                                 if let app = model.app(for: id) {
-                                    Image(nsImage: model.icon(for: app, notifying: dragFeedback)).resizable().interpolation(.high).frame(width: iconSize * 0.23, height: iconSize * 0.23)
+                                    Image(nsImage: model.previewIcon(for: app, notifying: dragFeedback)).resizable().interpolation(.high).frame(width: iconSize * 0.23, height: iconSize * 0.23)
                                 }
                             }
                         }.padding(4)

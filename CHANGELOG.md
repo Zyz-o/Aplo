@@ -1,3 +1,10 @@
+# 3.15.8 — 2026-11-03
+
+- Reading a ready icon no longer allocates a wake-up callback or touches the screen scale on every view pass, which removes per-frame work from scrolling.
+
+<!-- summary-zh -->
+- 读取已缓存图标时不再重复分配唤醒回调，也不再每帧查询屏幕缩放，降低滚动时的每帧开销。
+
 # 3.15.7 — 2026-11-03
 
 - Reduce scroll jank: icon identity checks no longer resolve bitmaps on every diff pass, the moving page strip composites as one layer, and label shadows pause during gestures.

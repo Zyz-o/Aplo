@@ -199,6 +199,7 @@ final class LauncherModel: ObservableObject {
     private var iconJobs: [String: BlockOperation] = [:]
     private var iconTokens: [String: UUID] = [:]
     private var iconWaiters: [String: [ObjectIdentifier: WeakTileFeedback]] = [:]
+    private var cachedBackingScale: CGFloat?
     private static let pendingIcon = NSImage(systemSymbolName: "app.dashed", accessibilityDescription: nil)!
     // Native scrolling owns the frame budget; no published changes per event.
     private var scrollBusyUntil: TimeInterval = 0
@@ -406,25 +407,37 @@ final class LauncherModel: ObservableObject {
     }
     func icon(for app: InstalledApp, notifying feedback: TileDragFeedback? = nil, prewarm: Bool = false) -> NSImage {
         let path = app.url.path
-        let pixelSize = IconRaster.pixelSize(points: preferences.iconPoints(fullscreen: isFullscreen),
-                                             scale: max(2, NSScreen.main?.backingScaleFactor ?? 2))
+        let pixelSize = IconRaster.pixelSize(points: preferences.iconPoints(fullscreen: isFullscreen), scale: backingScale)
         let cached = icons.object(forKey: path as NSString)
         if let cached, cached.pixels >= pixelSize { return cached.image }
         let placeholder = cached?.image ?? Self.pendingIcon
-        if let feedback { iconWaiters[path, default: [:]][ObjectIdentifier(feedback)] = WeakTileFeedback(feedback) }
         if let job = iconJobs[path] {
+            // Only a pending raster needs a wake-up callback. Registering one for an
+            // already-cached icon allocated a waiter and mutated a nested dictionary
+            // on every SwiftUI pass, which dominated frame time while scrolling.
+            if let feedback { registerIconWaiter(path: path, feedback: feedback) }
             if !prewarm { job.queuePriority = .veryHigh }
             return placeholder
         }
+        if let feedback { registerIconWaiter(path: path, feedback: feedback) }
+        scheduleRaster(for: app, pixelSize: pixelSize, prewarm: prewarm)
+        return placeholder
+    }
+
+    /// Queue a background raster for an application icon.
+    private func scheduleRaster(for app: InstalledApp, pixelSize: Int? = nil, prewarm: Bool = false) {
+        let path = app.url.path
+        guard iconJobs[path] == nil else { return }
+        let size = pixelSize ?? IconRaster.pixelSize(points: preferences.iconPoints(fullscreen: isFullscreen), scale: backingScale)
         let token = UUID(); iconTokens[path] = token
         let job = BlockOperation { [weak self] in
             let delivery = autoreleasepool {
-                let image = IconRaster.load(path: path, pixels: pixelSize)
+                let image = IconRaster.load(path: path, pixels: size)
                 return IconDelivery(image: image)
             }
             Task { @MainActor [weak self] in
                 guard let self, self.iconTokens[path] == token else { return }
-                self.icons.setObject(CachedApplicationIcon(image: delivery.image, pixels: pixelSize), forKey: path as NSString, cost: pixelSize * pixelSize * 4)
+                self.icons.setObject(CachedApplicationIcon(image: delivery.image, pixels: size), forKey: path as NSString, cost: size * size * 4)
                 self.iconJobs.removeValue(forKey: path); self.iconTokens.removeValue(forKey: path)
                 let waiters = self.iconWaiters.removeValue(forKey: path)?.values ?? Dictionary<ObjectIdentifier, WeakTileFeedback>().values
                 for waiter in waiters { waiter.value?.objectWillChange.send() }
@@ -432,7 +445,33 @@ final class LauncherModel: ObservableObject {
         }
         job.queuePriority = prewarm ? .low : .veryHigh
         iconJobs[path] = job; iconQueue.addOperation(job)
-        return placeholder
+    }
+
+    /// Reads an icon for rendering only: it schedules the raster when the bitmap is
+    /// missing but never allocates a new waiter for an icon that is already tracked.
+    /// Folder previews call it for every child on every frame.
+    func previewIcon(for app: InstalledApp, notifying feedback: TileDragFeedback? = nil) -> NSImage {
+        let path = app.url.path
+        if let cached = icons.object(forKey: path as NSString) { return cached.image }
+        if let feedback { registerIconWaiter(path: path, feedback: feedback) }
+        if iconJobs[path] == nil { scheduleRaster(for: app) }
+        return Self.pendingIcon
+    }
+    /// Reuse the existing waiter box for a feedback object instead of allocating a new one
+    /// on every lookup. The dictionary stores weak references, so a stale entry is harmless.
+    private func registerIconWaiter(path: String, feedback: TileDragFeedback) {
+        let key = ObjectIdentifier(feedback)
+        var waiters = iconWaiters[path] ?? [:]
+        if waiters[key] == nil { waiters[key] = WeakTileFeedback(feedback) }
+        iconWaiters[path] = waiters
+    }
+
+    /// Cached backing scale: `NSScreen.main` is an AppKit query and this runs per tile.
+    private var backingScale: CGFloat {
+        if let cached = cachedBackingScale { return cached }
+        let value = max(2, NSScreen.main?.backingScaleFactor ?? 2)
+        cachedBackingScale = value
+        return value
     }
 
     /// Synchronous entry retained for deterministic imports/tests. UI presentation uses requestRefresh.
