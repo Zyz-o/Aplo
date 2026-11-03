@@ -136,6 +136,27 @@ import XCTest
         XCTAssertEqual(tileChanges, 1)
         withExtendedLifetime((modelSubscription, tileSubscription)) {}
     }
+    func testPreviewIconSchedulesRasterWithoutPublishingModel() async throws {
+        let (model, _, cleanup) = fixture(); defer { cleanup() }
+        let feedback = model.dragFeedback(for: "app:preview")
+        var modelChanges = 0; var tileChanges = 0
+        let modelSubscription = model.objectWillChange.sink { modelChanges += 1 }
+        let tileSubscription = feedback.objectWillChange.sink { tileChanges += 1 }
+        let app = InstalledApp(id: "preview", name: "Preview", url: URL(fileURLWithPath: "/nonexistent-aplo-preview-test.app"), bundleIdentifier: "preview")
+        // A folder preview reads the icon before it exists: it must queue the raster.
+        let placeholder = model.previewIcon(for: app, notifying: feedback)
+        XCTAssertNotNil(placeholder)
+        for _ in 0..<250 {
+            if model.previewIcon(for: app) !== placeholder { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertFalse(model.previewIcon(for: app) === placeholder)
+        // Re-reading a ready preview icon must not wake the tile again.
+        for _ in 0..<200 { _ = model.previewIcon(for: app, notifying: feedback) }
+        XCTAssertEqual(modelChanges, 0)
+        XCTAssertEqual(tileChanges, 1)
+        withExtendedLifetime((modelSubscription, tileSubscription)) {}
+    }
     func testNoticeTimerNeverDismissesReplacementErrors() async throws {
         let (model, defaults, cleanup) = fixture(); defer { cleanup() }
         model.noticeDuration = .milliseconds(20)

@@ -313,7 +313,12 @@ final class LauncherModel: ObservableObject {
     /// downloaded items fill the leading pages, system items trail, folders keep their members.
     private static func systemLastDisplayPages(_ pages: [[LayoutItem]], appsByID: [String: InstalledApp]) -> [[LayoutItem]] {
         let items = pages.flatMap { $0 }
-        guard items.contains(where: { AppClassifier.systemLast([$0], appsByID: appsByID).first?.id != $0.id }) else { return pages }
+        let isSystem: (LayoutItem) -> Bool = { item in
+            if let id = item.appID { return appsByID[id]?.isSystemApplication == true }
+            return !item.children.isEmpty && item.children.allSatisfy { appsByID[$0]?.isSystemApplication == true }
+        }
+        // Nothing to partition: keep the stored pages untouched.
+        guard items.contains(where: isSystem), items.contains(where: { !isSystem($0) }) else { return pages }
         let ordered = AppClassifier.systemLast(items, appsByID: appsByID)
         let repaginated = stride(from: 0, to: ordered.count, by: max(1, LauncherLayout.pageSize)).map {
             Array(ordered[$0..<min(ordered.count, $0 + LauncherLayout.pageSize)])

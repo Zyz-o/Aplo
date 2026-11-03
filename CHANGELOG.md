@@ -1,3 +1,12 @@
+# 3.15.9 — 2026-11-03
+
+- Keep the page strip moving as one composited layer, so a page drag translates the finished image instead of redrawing every tile.
+- Off-screen neighbour pages no longer build drag handles or drop targets, and hovering an icon only resizes the icon that actually changed.
+
+<!-- summary-zh -->
+- 翻页画布整体合成，拖动时平移已渲染图层，不再逐个重绘磁贴。
+- 屏幕外的相邻页不再创建拖放句柄与投放目标；悬停放大只调整真正变化的图标。
+
 # 3.15.8 — 2026-11-03
 
 - Reading a ready icon no longer allocates a wake-up callback or touches the screen scale on every view pass, which removes per-frame work from scrolling.

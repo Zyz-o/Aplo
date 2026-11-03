@@ -238,6 +238,7 @@ struct LauncherView: View {
 
     private func verticalSections(tileHeight: CGFloat) -> some View {
         LazyVStack(alignment: .leading, spacing: LauncherGeometry.gridSpacing) {
+            // Read the container once; containerItems is a computed property.
             verticalRows(Array(model.containerItems.enumerated()), tileHeight: tileHeight)
         }.frame(width: model.gridWidth).frame(maxWidth: .infinity).padding(.vertical, 4)
     }
@@ -271,10 +272,14 @@ struct LauncherView: View {
     }
 
     private func horizontalGrid(tileHeight: CGFloat, rows: Int) -> some View {
-        LazyHGrid(rows: Array(repeating: GridItem(.fixed(tileHeight), spacing: LauncherGeometry.gridSpacing), count: rows), spacing: LauncherGeometry.gridSpacing) {
-            ForEach(LauncherGeometry.horizontalSlots(itemCount: model.containerItems.count, rows: rows, columns: model.columnCount), id: \.self) { index in
-                if model.containerItems.indices.contains(index) {
-                    let item = model.containerItems[index]
+        // Read the container once: containerItems is a computed property and the slot
+        // list is rebuilt on every SwiftUI pass, which allocated per frame while scrolling.
+        let items = model.containerItems
+        let slots = LauncherGeometry.horizontalSlots(itemCount: items.count, rows: rows, columns: model.columnCount)
+        return LazyHGrid(rows: Array(repeating: GridItem(.fixed(tileHeight), spacing: LauncherGeometry.gridSpacing), count: rows), spacing: LauncherGeometry.gridSpacing) {
+            ForEach(slots, id: \.self) { index in
+                if items.indices.contains(index) {
+                    let item = items[index]
                     tile(item, index: index)
                         .frame(width: model.tileWidth, height: tileHeight)
                         .id(item.id)
@@ -291,7 +296,7 @@ struct LauncherView: View {
         ForEach((model.pageIndex - 1)...(model.pageIndex + 1), id: \.self) { page in
             let origin = PageMotion.origin(relativePage: page - model.pageIndex, size: size,
                                            vertical: model.navigationDirection == .vertical)
-            pageContent(page)
+            pageContent(page, interactive: page == model.pageIndex)
                 .frame(width: size.width, height: size.height)
                 .offset(x: origin.x, y: origin.y)
                 .allowsHitTesting(page == model.pageIndex)
@@ -299,12 +304,12 @@ struct LauncherView: View {
         }
     }
 
-    private func pageContent(_ page: Int) -> some View {
+    private func pageContent(_ page: Int, interactive: Bool) -> some View {
         ScrollViewReader { proxy in
             ScrollView(.vertical) {
                 LazyVGrid(columns: columns, spacing: LauncherGeometry.gridSpacing) {
                     ForEach(Array(model.items(onPage: page).enumerated()), id: \.element.id) { index, item in
-                        tile(item, index: index).id(item.id)
+                        tile(item, index: index, interactive: interactive).id(item.id)
                     }
                 }.frame(width: model.gridWidth).frame(maxWidth: .infinity)
             }
@@ -387,7 +392,7 @@ struct LauncherView: View {
         .overlay(RoundedRectangle(cornerRadius: 13).strokeBorder(model.accentColor.opacity(0.22)))
     }
 
-    @ViewBuilder private func tile(_ item: LayoutItem, index: Int) -> some View {
+    @ViewBuilder private func tile(_ item: LayoutItem, index: Int, interactive: Bool = true) -> some View {
         LauncherTile(model: model, item: item, index: index, selected: model.selectedIndex == index) {
             if model.multiSelectionActive && item.kind == .app { model.toggleItemSelection(item); return }
             model.select(index)
@@ -396,7 +401,9 @@ struct LauncherView: View {
         }
         .equatable()
         .overlay {
-            if model.canBeginIconDrag {
+            // Neighbour pages are excluded from hit testing, so their drag handle can
+            // never fire. Skipping it avoids creating an AppKit view per off-screen tile.
+            if interactive && model.canBeginIconDrag {
                 NativeDragHandle(model: model, item: item) {
                     if model.multiSelectionActive && item.kind == .app { model.toggleItemSelection(item); return }
                     model.select(index)
@@ -411,7 +418,7 @@ struct LauncherView: View {
                     .padding(4).allowsHitTesting(false)
             }
         }
-        .onDrop(of: [launcherDragType], delegate: TileDropDelegate(model: model, target: item, width: model.tileWidth))
+        .modifier(TileDropModifier(model: model, target: item, width: model.tileWidth, enabled: interactive))
         .contextMenu {
             if model.preferences.automaticCategories {
                 if let appID = item.appID, let app = model.app(for: appID) {
@@ -634,6 +641,20 @@ struct LauncherTile: View, Equatable {
     }
 }
 
+private struct TileDropModifier: ViewModifier {
+    let model: LauncherModel
+    let target: LayoutItem
+    let width: CGFloat
+    let enabled: Bool
+    func body(content: Content) -> some View {
+        if enabled {
+            content.onDrop(of: [launcherDragType], delegate: TileDropDelegate(model: model, target: target, width: width))
+        } else {
+            content
+        }
+    }
+}
+
 private struct TileDropDelegate: DropDelegate {
     let model: LauncherModel
     let target: LayoutItem
@@ -788,11 +809,12 @@ private struct PageStrip<Content: View>: View {
         self.motion = motion; self.size = size; self.content = content()
     }
     var body: some View {
-        content.offset(x: motion.axis == .horizontal ? motion.offset : 0,
-                       y: motion.axis == .vertical ? motion.offset : 0)
-            // Rasterize the moving page strip once per frame instead of re-compositing
-            // every tile's shadows and materials independently during gestures.
-            .compositingGroup()
+        // Rasterize the page strip once, then translate the finished layer. Applying the
+        // group before the offset keeps the drag a GPU transform instead of re-rendering
+        // every tile's shadows and materials on each frame of the gesture.
+        content.compositingGroup()
+            .offset(x: motion.axis == .horizontal ? motion.offset : 0,
+                    y: motion.axis == .vertical ? motion.offset : 0)
             .allowsHitTesting(!motion.active)
     }
 }

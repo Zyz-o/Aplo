@@ -7,6 +7,7 @@ import QuartzCore
     static let shared = DockMagnificationController()
     private struct Entry { weak var view: MagnificationIconView? }
     private var entries: [ObjectIdentifier: Entry] = [:]
+    private var magnifiedView: MagnificationIconView?
     private var scrollMonitor: Any?
     private var scrollBusyUntil: CFTimeInterval = 0
     private var waitingForScrollEnd = false
@@ -38,7 +39,8 @@ import QuartzCore
         waitingForScrollEnd = true
         // Once per gesture, rather than geometry conversion and animation for
         // every visible icon on every wheel/momentum event.
-        for entry in entries.values { entry.view?.setScale(1, immediately: true) }
+        magnifiedView?.setScale(1, immediately: true)
+        magnifiedView = nil
         resumeAfterScroll()
     }
     private func resumeAfterScroll() {
@@ -65,7 +67,10 @@ import QuartzCore
         }
     }
     func register(_ view: MagnificationIconView) { entries[ObjectIdentifier(view)] = Entry(view: view) }
-    func unregister(_ view: MagnificationIconView) { entries.removeValue(forKey: ObjectIdentifier(view)) }
+    func unregister(_ view: MagnificationIconView) {
+        entries.removeValue(forKey: ObjectIdentifier(view))
+        if magnifiedView === view { magnifiedView = nil }
+    }
     func update(window: NSWindow?, point: NSPoint) {
         guard enabled else { return }
         var target: MagnificationIconView?
@@ -79,11 +84,13 @@ import QuartzCore
             let scale = DockMagnificationCurve.scale(dx: point.x - rect.midX, dy: point.y - rect.midY, size: rect.size)
             if scale > targetScale { target = view; targetScale = scale }
         }
-        for entry in entries.values {
-            guard let view = entry.view else { continue }
-            // Reset the previous icon immediately: crossing a gap never leaves two enlarged icons.
-            view.setScale(view === target ? targetScale : 1, immediately: view !== target)
+        // Only the icon that lost the pointer needs to shrink. Resetting every tile on
+        // every mouse-move created one Core Animation transaction per visible icon.
+        if let previous = magnifiedView, previous !== target {
+            previous.setScale(1, immediately: true)
         }
+        magnifiedView = target
+        if let target { target.setScale(targetScale) }
     }
 
     func sourceFrame(appID: String, in window: NSWindow) -> CGRect? {
@@ -92,7 +99,7 @@ import QuartzCore
             $0.applicationID == appID && $0.window === window && !$0.visibleRect.isEmpty
         }.map { $0.convert($0.bounds, to: content) }
     }
-    func reset() { pendingWindow = nil; for entry in entries.values { entry.view?.setScale(1) } }
+    func reset() { pendingWindow = nil; magnifiedView?.setScale(1); magnifiedView = nil }
 }
 
 class MagnificationIconView: NSView {
