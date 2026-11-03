@@ -62,6 +62,9 @@ extension AppDelegate {
             if event.type == .scrollWheel, event.window === self.panel {
                 self.model.noteScrollInteraction()
             }
+            // Keep precision vertical scrolling on AppKit's original event and momentum path.
+            if event.type == .scrollWheel, event.hasPreciseScrollingDeltas,
+               self.model.isContinuousScrolling, self.model.navigationDirection == .vertical { return event }
             if event.phase.contains(.began) { self.continuousScrollScaler.reset() }
             if self.panel.isKeyWindow, !self.model.showingSettings, !self.presentingSystemDialog,
                self.model.isContinuousScrolling, event.type == .scrollWheel,

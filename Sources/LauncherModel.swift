@@ -273,6 +273,23 @@ final class LauncherModel: ObservableObject {
         cachedBrowsingLayout = visible
         return visible
     }
+    @Published private(set) var recentLaunchIDs: [String]?
+    private var recentIDs: [String] {
+        recentLaunchIDs ?? preferencesStore.defaults.stringArray(forKey: "aplo.recentLaunchIDs.v1") ?? []
+    }
+    var recentApplications: [InstalledApp] {
+        return recentIDs.lazy.filter { !self.preferences.hiddenAppIDs.contains($0) }.compactMap { self.lookup[$0] }.prefix(columnCount).map { $0 }
+    }
+    func recordRecentLaunch(_ id: String) {
+        let updated = Array(([id] + recentIDs.filter { $0 != id }).prefix(24))
+        guard updated != recentIDs else { return }
+        preferencesStore.defaults.set(updated, forKey: "aplo.recentLaunchIDs.v1")
+        recentLaunchIDs = updated
+    }
+    func isSystemItem(_ item: LayoutItem) -> Bool {
+        if let id = item.appID { return lookup[id]?.isSystemApplication == true }
+        return !item.children.isEmpty && item.children.allSatisfy { lookup[$0]?.isSystemApplication == true }
+    }
     var openFolder: LayoutItem? { browsingLayout.folders.first { $0.id == openFolderID } }
     var containerItems: [LayoutItem] {
         if let cachedContainerItems { return cachedContainerItems }

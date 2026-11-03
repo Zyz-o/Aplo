@@ -7,6 +7,12 @@ enum AppStrings {
     }
     private static let cache = TranslationCache()
     static let english: [String: String] = [
+        "保留自定义呼出快捷键、个人布局、隐藏应用和备份。": "Keeps your custom shortcut, layouts, hidden apps and backups.",
+        "最近使用": "Recently Used",
+        "重置音效开关、打开／关闭／导航音效和音量。": "Resets sound enablement, opening, closing and navigation sounds, and volume.",
+        "重置 F4、热角、文件夹浏览方式、滚动方向、分页开关、反向翻页和灵敏度。": "Resets F4, hot corner, folder navigation, scroll direction, paging controls and sensitivity.",
+        "重置字体、颜色、大小、背景、主题、名称显示、辅助配色、放大、动画和阴影。": "Resets font, colors, sizes, background, theme, names, accessibility colors, magnification, animations and shadow.",
+        "重置入口、工具栏、收起方式、窗口固定、启动后收起、程序坞、语言、网格和系统应用排序。": "Resets entry points, toolbar, dismissal, pinning, hide after launch, Dock, language, grid and system app ordering.",
         "当前没有可用的新版。": "No newer release is available.",
         "前往 GitHub 下载": "Download on GitHub",
         "发现新版本": "New Version Available",

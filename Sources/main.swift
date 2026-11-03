@@ -295,7 +295,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             }
             let failed = error != nil
             Task { @MainActor [weak self] in
-                guard let self, self.launchGeneration == generation else { return }
+                guard let self else { return }
+                if !failed { self.model.recordRecentLaunch(app.id) }
+                guard self.launchGeneration == generation else { return }
                 if !failed { self.launchOpenFinished = true; self.finishLaunchPresentation(generation); return }
                 self.launchGeneration = UUID(); self.launchingApplication = false
                 self.model.message = "无法打开“\(app.name)”，请检查应用是否完整或有权限运行。"

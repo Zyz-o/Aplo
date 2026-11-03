@@ -1,3 +1,12 @@
+# 3.15.2 — 2026-11-03
+
+- Preserve native trackpad momentum for vertical scrolling and render fixed-height lazy rows. Add recent launches and a system-app section to the vertical home view.
+- Stack wide settings controls below labels and explain which choices each page reset affects.
+
+<!-- summary-zh -->
+- 优化纵向滚动，保留系统原生惯性。纵向主页新增最近使用和底部系统应用分区。
+- 改善窄窗口设置排版，恢复默认前明确列出受影响的选项。
+
 # 3.15.1 — 2026-11-03
 
 - Add manual checks for published GitHub releases with a complete arm64 download. Show release notes and link to GitHub.

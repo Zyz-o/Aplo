@@ -103,7 +103,7 @@ struct SettingsView: View {
             .confirmationDialog(model.text("恢复本页默认"), isPresented: $resettingPage) {
                 Button(model.text("恢复本页默认")) { resetPage() }
                 Button(model.text("取消"), role: .cancel) {}
-            } message: { Text(model.text("仅重置当前页的偏好。个人布局、隐藏应用、快捷键与备份不会改变。")) }
+            } message: { Text(model.text(resetDetails) + "\n" + model.text("保留自定义呼出快捷键、个人布局、隐藏应用和备份。")) }
             .sheet(isPresented: $scalePreview, onDismiss: { model.presentingAppearancePreview = false }) {
                 ScalePreview(model: model)
             }
@@ -178,11 +178,11 @@ struct SettingsView: View {
                 }
                 note("选择 Aplo 图标显示在底部程序坞、顶部菜单栏，或两处同时显示。至少保留一个入口，快捷键按原设置使用。")
                 Divider()
-                HStack {
-                    Text(model.text("显示程序坞")); Spacer()
+                VStack(alignment: .leading, spacing: 7) {
+                    Text(model.text("显示程序坞"))
                     Picker(model.text("显示程序坞"), selection: preference(\.dockVisibility)) {
                         ForEach(LauncherDockVisibility.allCases, id: \.self) { Text(model.text($0.title)).tag($0) }
-                    }.pickerStyle(.segmented).labelsHidden().frame(width: model.preferences.textScalePercent > 115 ? 360 : 300)
+                    }.pickerStyle(.segmented).labelsHidden().frame(maxWidth: .infinity)
                 }
                 note("仅在面板打开时临时调整系统 Dock。跟随窗口：小窗保持系统状态，全屏自动隐藏；收起面板后恢复。显示模式仍遵循系统的自动隐藏偏好。")
                 Divider()
@@ -344,22 +344,20 @@ struct SettingsView: View {
                 note("仅改变文件夹内的浏览方式，不改变主界面或应用顺序。")
             }
             card("浏览与滚动", icon: "hand.draw") {
-                HStack {
+                VStack(alignment: .leading, spacing: 7) {
                     Text(model.text("浏览方式"))
-                    Spacer()
                     Picker(model.text("浏览方式"), selection: preference(\.navigationStyle)) {
                         ForEach(LauncherNavigationStyle.allCases, id: \.self) { Text(model.text($0.title)).tag($0) }
-                    }.pickerStyle(.segmented).labelsHidden().frame(width: model.preferences.language.isEnglish ? (model.preferences.textScalePercent > 115 ? 360 : 320) : 220).accessibilityLabel(model.text("浏览方式"))
+                    }.pickerStyle(.segmented).labelsHidden().frame(maxWidth: .infinity).accessibilityLabel(model.text("浏览方式"))
                 }
                 switchRow("启用滑动翻页", key: \.swipeEnabled)
                     .disabled(model.isContinuousScrolling)
                 Divider().padding(.vertical, 3)
-                HStack {
+                VStack(alignment: .leading, spacing: 7) {
                     Text(model.text("浏览方向"))
-                    Spacer()
                     Picker(model.text("浏览方向"), selection: preference(\.pagingDirection)) {
                         ForEach(LauncherPagingDirection.allCases, id: \.self) { Text(model.text($0.title)).tag($0) }
-                    }.pickerStyle(.segmented).labelsHidden().frame(width: model.preferences.language.isEnglish ? (model.preferences.textScalePercent > 115 ? 360 : 320) : 220)
+                    }.pickerStyle(.segmented).labelsHidden().frame(maxWidth: .infinity)
                         .accessibilityLabel(model.text("浏览方向"))
                 }
                 HStack {
@@ -453,6 +451,16 @@ struct SettingsView: View {
                     }
                 }
             }
+        }
+    }
+
+    private var resetDetails: String {
+        switch category {
+        case .general: return "重置入口、工具栏、收起方式、窗口固定、启动后收起、程序坞、语言、网格和系统应用排序。"
+        case .appearance: return "重置字体、颜色、大小、背景、主题、名称显示、辅助配色、放大、动画和阴影。"
+        case .shortcuts: return "重置 F4、热角、文件夹浏览方式、滚动方向、分页开关、反向翻页和灵敏度。"
+        case .sound: return "重置音效开关、打开／关闭／导航音效和音量。"
+        default: return ""
         }
     }
 
