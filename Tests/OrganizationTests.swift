@@ -243,5 +243,20 @@ import XCTest
         model.undoOrganization(); XCTAssertEqual(model.layout, before)
     }
 
+    func testOrganizeDownloadedFirstAndSortByNameAreUndoable() throws {
+        let (model, _, cleanup) = try fixture(); defer { cleanup() }
+        let before = model.layout
+        model.shuffleLayout()
+        XCTAssertNotEqual(model.layout.allItems, before.allItems)
+        model.sortByName()
+        XCTAssertEqual(model.layout.appIDs, before.appIDs)
+        model.organizeDownloadedFirst()
+        XCTAssertEqual(model.layout.appIDs, before.appIDs)
+        model.undoOrganization()
+        model.undoOrganization()
+        model.undoOrganization()
+        XCTAssertEqual(model.layout, before)
+    }
+
 }
 #endif

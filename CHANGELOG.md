@@ -1,3 +1,14 @@
+# 3.15.5 — 2026-11-03
+
+- Add name sorting and non-system apps first to the Arrange menu. Back up the layout before saving the new order.
+- Restore optional system-last display ordering without a separate system category.
+- Use a spring transition for adjacent pages; jump directly across non-adjacent pages.
+
+<!-- summary-zh -->
+- 整理菜单新增「下载应用优先」和「按名称排序」，保存新顺序前先备份。
+- 可在连续滚动时将系统应用排在最后，仍按用途分类。
+- 相邻页使用弹簧动画，跨多页直接跳转。
+
 # 3.15.4 — 2026-11-03
 
 - Group built-in and installed apps by function, pin a recent-app row above the home grid, and resolve drag thumbnails only when dragging starts.

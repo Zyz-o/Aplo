@@ -29,7 +29,7 @@ extension AppDelegate {
         pendingPageTarget = target
         let remaining = abs(finalOffset - model.pageDragOffset) / model.pageExtent
         let duration = preview && CommandLine.arguments.contains("--slow-page-animation") ? 2.0
-            : min(0.18, max(0.10, 0.18 * Double(remaining)))
+            : min(0.32, max(0.20, 0.28 * Double(remaining)))
         let animated = model.preferences.animationsEnabled && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         let finish: @MainActor @Sendable () -> Void = { [weak self] in
             guard let self, self.pagingToken == token else { return }
@@ -43,7 +43,7 @@ extension AppDelegate {
             self.pendingPageTarget = nil
         }
         if animated {
-            withAnimation(.easeOut(duration: duration)) { model.pageDragOffset = finalOffset }
+            withAnimation(.spring(response: 0.32, dampingFraction: 0.86, blendDuration: 0.05)) { model.pageDragOffset = finalOffset }
             DispatchQueue.main.asyncAfter(deadline: .now() + duration, execute: finish)
         } else { finish() }
     }

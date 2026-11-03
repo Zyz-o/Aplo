@@ -109,6 +109,9 @@ struct LauncherView: View {
                                 Label(model.text(mode.title), systemImage: !model.preferences.automaticCategories && model.activeArrangement == mode ? "checkmark" : "square.grid.2x2")
                             }
                         }
+                        Divider()
+                        Button(model.text("下载应用优先")) { model.organizeDownloadedFirst() }
+                        Button(model.text("按名称排序")) { model.sortByName() }
                         Button(model.text("随机打乱")) { model.shuffleLayout() }
                         Divider()
                         Button(model.text(model.multiSelectionActive ? "结束多选" : "多选应用")) { model.toggleMultiSelection() }.disabled(model.isSearching || model.importInProgress)

@@ -221,6 +221,8 @@ struct SettingsView: View {
                     Spacer()
                     Button(model.text("刷新列表")) { model.requestRefresh(resetSearch: false) }
                 }
+                switchRow("系统应用排在最后", key: \.systemAppsLast)
+                note("下载应用优先显示在前，系统应用排在末尾；保留手动布局与文件夹。")
             }
         case .appearance:
             AppearanceLivePreview(model: model)
@@ -454,7 +456,7 @@ struct SettingsView: View {
 
     private var resetDetails: String {
         switch category {
-        case .general: return "重置入口、工具栏、收起方式、窗口固定、启动后收起、程序坞、语言和网格。"
+        case .general: return "重置入口、工具栏、收起方式、窗口固定、启动后收起、程序坞、语言、网格和系统应用排序。"
         case .appearance: return "重置字体、颜色、大小、背景、主题、名称显示、辅助配色、放大、动画和阴影。"
         case .shortcuts: return "重置 F4、热角、文件夹浏览方式、滚动方向、分页开关、反向翻页和灵敏度。"
         case .sound: return "重置音效开关、打开／关闭／导航音效和音量。"
@@ -470,7 +472,7 @@ struct SettingsView: View {
                 p.entryLocation = defaults.entryLocation; p.toolbarPosition = defaults.toolbarPosition
                 p.dismissStyle = defaults.dismissStyle; p.pinToDesktop = defaults.pinToDesktop
                 p.launchAutoHide = defaults.launchAutoHide; p.dockVisibility = defaults.dockVisibility
-                p.language = defaults.language
+                p.language = defaults.language; p.systemAppsLast = defaults.systemAppsLast
                 p.compactGridColumns = 0; p.fullscreenGridColumns = 0; p.compactGridRows = 0; p.fullscreenGridRows = 0
             case .appearance:
                 p.labelFontFamily = defaults.labelFontFamily; p.labelWeight = defaults.labelWeight

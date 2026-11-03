@@ -47,6 +47,14 @@ enum AppClassifier {
         return .other
     }
 
+    static func systemLast(_ items: [LayoutItem], appsByID: [String: InstalledApp]) -> [LayoutItem] {
+        let isSystem: (LayoutItem) -> Bool = { item in
+            if let id = item.appID { return appsByID[id]?.isSystemApplication == true }
+            return !item.children.isEmpty && item.children.allSatisfy { appsByID[$0]?.isSystemApplication == true }
+        }
+        return items.filter { !isSystem($0) } + items.filter(isSystem)
+    }
+
     static func layout(for apps: [InstalledApp]) -> LauncherLayout {
         let groups = Dictionary(grouping: apps, by: category)
         let folders = AppCategory.allCases.compactMap { category -> LayoutItem? in

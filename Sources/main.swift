@@ -201,6 +201,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             self.finishPendingPage()
             let delta = target - self.model.pageIndex
             guard delta != 0 else { return }
+            // Only the current page and its neighbors are rendered.
             if abs(delta) == 1 { self.settlePageMotion(explicitDelta: delta) }
             else { self.model.goToPage(target) }
         }

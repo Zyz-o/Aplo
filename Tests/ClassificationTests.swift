@@ -38,6 +38,12 @@ import Foundation
         expect(!thirdParty.isSystemApplication && AppClassifier.category(for: thirdParty) == .utilities, "a system-looking path alone cannot classify third-party apps as system")
         expect(!dataVolumeApp.isSystemApplication && AppClassifier.category(for: dataVolumeApp) == .development, "apps on the Data volume are not system apps")
         expect(AppClassifier.category(for: app("io.tailscale.ipn.macsys", "Tailscale")) == .internet, "Tailscale belongs to networking")
+        let orderedApps = [systemMedia, apps[0], apps[1]]
+        let map = Dictionary(uniqueKeysWithValues: orderedApps.map { ($0.id, $0) })
+        let items = orderedApps.map { LayoutItem.app($0.id) }
+        let ordered = AppClassifier.systemLast(items, appsByID: map)
+        expect(ordered.map(\.appID) == [apps[0].id, apps[1].id, systemMedia.id], "system-last presentation is a stable partition of existing order")
+        expect(items.first?.appID == systemMedia.id, "system-last presentation does not mutate its source layout")
         let generated = AppClassifier.layout(for: apps)
         expect(generated.appIDs.count == apps.count && Set(generated.appIDs) == Set(apps.map(\.id)), "automatic folders contain each installed app exactly once")
         expect(generated.folders.allSatisfy { $0.id != "category:system" }, "no dedicated system folder is generated")

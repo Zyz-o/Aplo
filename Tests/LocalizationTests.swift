@@ -28,12 +28,13 @@ final class LocalizationTests: XCTestCase {
         XCTAssertEqual(empty.localized(language: .english), "Folder name cannot be empty.")
     }
     func testRecordedAndLegacyShortcutsRenderUsingCurrentLanguage() throws {
+        let encoder = JSONEncoder(); encoder.outputFormatting = .sortedKeys
         for name in ["空格", "Space"] {
             let shortcut = ShortcutBinding(keyCode: UInt32(kVK_Space), modifiers: UInt32(controlKey | optionKey), keyName: name)
-            let original = try JSONEncoder().encode(shortcut)
+            let original = try encoder.encode(shortcut)
             XCTAssertEqual(shortcut.localizedDisplayName(language: .english), "⌃⌥Space")
             XCTAssertEqual(shortcut.localizedDisplayName(language: .chinese), "⌃⌥空格")
-            XCTAssertEqual(try JSONEncoder().encode(shortcut), original)
+            XCTAssertEqual(try encoder.encode(shortcut), original)
             let message: LocalizedMessage = "快捷键已设为 \(shortcut)。"
             XCTAssertEqual(message.localized(language: .english), "Shortcut set to ⌃⌥Space.")
             XCTAssertEqual(message.localized(language: .chinese), "快捷键已设为 ⌃⌥空格。")

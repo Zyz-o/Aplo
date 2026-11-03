@@ -143,7 +143,7 @@ final class LauncherModel: ObservableObject {
     var onPreferencesChanged: ((PreferenceChanges) -> Void)?
     @Published private(set) var preferences: LauncherPreferences { didSet {
         cachedContainerItems = nil
-        if oldValue.hiddenAppIDs != preferences.hiddenAppIDs || oldValue.automaticCategories != preferences.automaticCategories { cachedBrowsingLayout = nil }
+        if oldValue.hiddenAppIDs != preferences.hiddenAppIDs || oldValue.automaticCategories != preferences.automaticCategories || oldValue.systemAppsLast != preferences.systemAppsLast { cachedBrowsingLayout = nil }
     } }
     @Published var presentingAppearancePreview = false { didSet { onAppearancePreviewChanged?() } }
     var onAppearancePreviewChanged: (() -> Void)?
@@ -286,6 +286,10 @@ final class LauncherModel: ObservableObject {
         preferencesStore.defaults.set(updated, forKey: "aplo.recentLaunchIDs.v1")
         recentLaunchIDs = updated
     }
+    func isSystemItem(_ item: LayoutItem) -> Bool {
+        if let id = item.appID { return lookup[id]?.isSystemApplication == true }
+        return !item.children.isEmpty && item.children.allSatisfy { lookup[$0]?.isSystemApplication == true }
+    }
     var openFolder: LayoutItem? { browsingLayout.folders.first { $0.id == openFolderID } }
     var containerItems: [LayoutItem] {
         if let cachedContainerItems { return cachedContainerItems }
@@ -293,7 +297,7 @@ final class LauncherModel: ObservableObject {
         if isSearching { items = results.map { .app($0.id) } }
         else {
             let source = openFolder.map { $0.children.map { LayoutItem.app($0) } } ?? browsingLayout.allItems
-            items = source
+            items = isContinuousScrolling && preferences.systemAppsLast ? AppClassifier.systemLast(source, appsByID: lookup) : source
         }
         cachedContainerItems = items
         return items
@@ -342,6 +346,7 @@ final class LauncherModel: ObservableObject {
         let previousOrganization = organizationChanged ? organizationState : nil
         let hiddenChanged = updated.hiddenAppIDs != preferences.hiddenAppIDs
         let navigationChanged = PreferenceChanges(from: preferences, to: updated).contains(.navigation)
+        let orderingChanged = updated.systemAppsLast != preferences.systemAppsLast
         let categoryChanged = updated.automaticCategories != preferences.automaticCategories
         let languageChanged = updated.language != preferences.language
         let changes = PreferenceChanges(from: preferences, to: updated)
@@ -354,7 +359,7 @@ final class LauncherModel: ObservableObject {
                 self?.flushPreferences()
             }
         } else { flushPreferences() }
-        if navigationChanged { pageIndex = 0; selectedIndex = 0 }
+        if navigationChanged || orderingChanged { pageIndex = 0; selectedIndex = 0 }
         if hiddenChanged {
             if openFolderID != nil && openFolder == nil { openFolderID = nil }
             filter()
@@ -611,6 +616,68 @@ final class LauncherModel: ObservableObject {
             } else {
                 let items = updated.allItems.shuffled()
                 updated.pages = stride(from: 0, to: items.count, by: LauncherLayout.pageSize).map { Array(items[$0..<min($0 + LauncherLayout.pageSize, items.count)]) }
+                if updated.pages.isEmpty { updated.pages = [[]] }
+            }
+            guard commit(updated) else { return }
+            updatePreferences {
+                if isFullscreen { $0.arrangement = .grid } else { $0.compactArrangement = .grid }
+                $0.automaticCategories = false
+            }
+            pageIndex = 0; selectedIndex = 0
+        }
+    }
+    func organizeDownloadedFirst() {
+        withOrganizationEdit {
+            do { _ = try store.archiveCurrent() }
+            catch { message = "无法备份布局，未调整排列。"; return }
+            var updated = layout
+            if let folderID = openFolderID, layout.folders.contains(where: { $0.id == folderID }) {
+                for page in updated.pages.indices {
+                    if let index = updated.pages[page].firstIndex(where: { $0.id == folderID }) {
+                        let children = updated.pages[page][index].children
+                        let downloaded = children.filter { self.lookup[$0]?.isSystemApplication != true }
+                            .sorted { (self.lookup[$0]?.name ?? "").localizedStandardCompare(self.lookup[$1]?.name ?? "") == .orderedAscending }
+                        let system = children.filter { self.lookup[$0]?.isSystemApplication == true }
+                            .sorted { (self.lookup[$0]?.name ?? "").localizedStandardCompare(self.lookup[$1]?.name ?? "") == .orderedAscending }
+                        updated.pages[page][index].children = downloaded + system
+                    }
+                }
+            } else {
+                let items = updated.allItems
+                let downloaded = items.filter { !self.isSystemItem($0) }
+                    .sorted { self.name(for: $0).localizedStandardCompare(self.name(for: $1)) == .orderedAscending }
+                let system = items.filter { self.isSystemItem($0) }
+                    .sorted { self.name(for: $0).localizedStandardCompare(self.name(for: $1)) == .orderedAscending }
+                let combined = downloaded + system
+                updated.pages = stride(from: 0, to: combined.count, by: LauncherLayout.pageSize).map {
+                    Array(combined[$0..<min($0 + LauncherLayout.pageSize, combined.count)])
+                }
+                if updated.pages.isEmpty { updated.pages = [[]] }
+            }
+            guard commit(updated) else { return }
+            updatePreferences {
+                if isFullscreen { $0.arrangement = .grid } else { $0.compactArrangement = .grid }
+                $0.automaticCategories = false
+            }
+            pageIndex = 0; selectedIndex = 0
+        }
+    }
+    func sortByName() {
+        withOrganizationEdit {
+            do { _ = try store.archiveCurrent() }
+            catch { message = "无法备份布局，未调整排列。"; return }
+            var updated = layout
+            if let folderID = openFolderID, layout.folders.contains(where: { $0.id == folderID }) {
+                for page in updated.pages.indices {
+                    if let index = updated.pages[page].firstIndex(where: { $0.id == folderID }) {
+                        updated.pages[page][index].children.sort { (self.lookup[$0]?.name ?? "").localizedStandardCompare(self.lookup[$1]?.name ?? "") == .orderedAscending }
+                    }
+                }
+            } else {
+                let items = updated.allItems.sorted { self.name(for: $0).localizedStandardCompare(self.name(for: $1)) == .orderedAscending }
+                updated.pages = stride(from: 0, to: items.count, by: LauncherLayout.pageSize).map {
+                    Array(items[$0..<min($0 + LauncherLayout.pageSize, items.count)])
+                }
                 if updated.pages.isEmpty { updated.pages = [[]] }
             }
             guard commit(updated) else { return }
