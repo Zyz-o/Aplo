@@ -90,7 +90,11 @@ struct LauncherView: View {
             else if model.visibleItems.isEmpty {
                 LauncherEmptyState(model: model)
             } else if model.isContinuousScrolling {
-                continuousContent
+                if CommandLine.arguments.contains("--native-scroll-comparison"),
+                   model.isFullscreen, model.navigationDirection == .vertical,
+                   !model.initialDiscoveryPending, !model.editing, !model.isSearching, model.openFolderID == nil {
+                    NativeVerticalComparison(model: model, launch: launch)
+                } else { continuousContent }
             } else {
                 GeometryReader { geometry in
                     PageStrip(motion: model.pageMotion, size: geometry.size) {
