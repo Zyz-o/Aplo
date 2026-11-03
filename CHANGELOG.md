@@ -1,3 +1,12 @@
+# 3.15.7 — 2026-11-03
+
+- Reduce scroll jank: icon identity checks no longer resolve bitmaps on every diff pass, the moving page strip composites as one layer, and label shadows pause during gestures.
+- Keyboard-driven scrolling inside a page animates to the final selection instead of queueing conflicting jumps.
+
+<!-- summary-zh -->
+- 降低滚动卡顿：图标身份比对不再在每帧解析位图，翻页画布整体合成，手势期间暂停文字阴影。
+- 分页内的键盘导航滚动改为平滑动画，快速按键不再排队冲突的跳转。
+
 # 3.15.6 — 2026-11-03
 
 - The system-last display ordering now applies to paged grids as well as continuous scrolling, without rewriting saved layouts.

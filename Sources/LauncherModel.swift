@@ -395,6 +395,12 @@ final class LauncherModel: ObservableObject {
 
     func text(_ source: String) -> String { AppStrings.text(source, language: preferences.language) }
     func app(for id: String) -> InstalledApp? { lookup[id] }
+    /// A cheap, allocation-free identity for the icon's current cached bitmap. Uses the
+    /// cache-hit path only: it never schedules raster jobs or registers waiters, so
+    /// SwiftUI diffing can call it on every tile without side effects.
+    func cachedIconIdentity(for app: InstalledApp) -> ObjectIdentifier {
+        ObjectIdentifier(icons.object(forKey: app.url.path as NSString)?.image ?? Self.pendingIcon)
+    }
     func name(for item: LayoutItem) -> String {
         item.kind == .folder ? (item.id.hasPrefix("category:") ? text(item.title ?? "文件夹") : item.title ?? "文件夹") : item.appID.flatMap { lookup[$0]?.name }.map { preferences.language.usesTraditionalChinese ? text($0) : $0 } ?? text("应用")
     }

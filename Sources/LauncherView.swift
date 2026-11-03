@@ -313,7 +313,11 @@ struct LauncherView: View {
             .onReceive(model.$selectedIndex) { index in
                 guard page == model.pageIndex, !model.pageTransitionActive, model.draggingID == nil,
                       model.visibleItems.indices.contains(index) else { return }
-                proxy.scrollTo(model.visibleItems[index].id, anchor: .center)
+                // Rapid arrow-key navigation lands on the final selection; the anchor is
+                // animated so intermediate steps do not queue conflicting scroll offsets.
+                withAnimation(.easeOut(duration: 0.12)) {
+                    proxy.scrollTo(model.visibleItems[index].id, anchor: .center)
+                }
             }
         }
     }
@@ -559,8 +563,11 @@ struct LauncherTile: View, Equatable {
     }
     private var iconIdentity: IconRenderIdentity {
         let ids = previewChildren ?? (item.kind == .folder ? item.children : [item.appID].compactMap { $0 })
+        // The cached bitmap pointer is a stable identity; avoid re-resolving every tile's
+        // folder thumbnails through icon(for:) on each SwiftUI diff pass while scrolling.
+        let images = ids.prefix(9).compactMap { model.app(for: $0) }.map { model.cachedIconIdentity(for: $0) }
         return IconRenderIdentity(item: item, children: previewChildren,
-                                  images: ids.prefix(9).compactMap { model.app(for: $0) }.map { ObjectIdentifier(model.icon(for: $0, notifying: dragFeedback)) },
+                                  images: images,
                                   size: iconSize, colorVision: model.preferences.colorVision, badgePoints: model.preferences.textPoints(8), dark: colorScheme == .dark)
     }
     var body: some View {
@@ -600,7 +607,9 @@ struct LauncherTile: View, Equatable {
                     .foregroundStyle(model.applicationLabelColor)
                     .lineLimit(2).multilineTextAlignment(.center)
                     .padding(.horizontal, clearBackdrop ? 4 : 0)
-                    .shadow(color: clearBackdrop ? (model.preferences.labelColor == .black ? .white.opacity(0.6) : .black.opacity(0.65)) : .clear, radius: 1, y: 1)
+                    // Skip the glyph shadow while a gesture or transition is animating;
+                    // blurred text shadows are the most expensive per-tile layer effect.
+                    .shadow(color: clearBackdrop && !model.isContinuousScrolling && !model.pageTransitionActive ? (model.preferences.labelColor == .black ? .white.opacity(0.6) : .black.opacity(0.65)) : .clear, radius: 1, y: 1)
                     .frame(height: model.preferences.labelHeight, alignment: .top)
                     .opacity(model.preferences.showNames ? 1 : 0).accessibilityHidden(!model.preferences.showNames)
             }
@@ -781,6 +790,9 @@ private struct PageStrip<Content: View>: View {
     var body: some View {
         content.offset(x: motion.axis == .horizontal ? motion.offset : 0,
                        y: motion.axis == .vertical ? motion.offset : 0)
+            // Rasterize the moving page strip once per frame instead of re-compositing
+            // every tile's shadows and materials independently during gestures.
+            .compositingGroup()
             .allowsHitTesting(!motion.active)
     }
 }
