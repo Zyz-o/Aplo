@@ -548,19 +548,30 @@ struct LauncherTile: View, Equatable {
     }
     private var iconIdentity: IconRenderIdentity {
         let ids = previewChildren ?? (item.kind == .folder ? item.children : [item.appID].compactMap { $0 })
-        // The cached bitmap pointer is a stable identity; avoid re-resolving every tile's
-        // folder thumbnails through icon(for:) on each SwiftUI diff pass while scrolling.
-        let images = ids.prefix(9).compactMap { model.app(for: $0) }.map { model.cachedIconIdentity(for: $0) }
+        // One pass over the children: resolve the app and read the cached bitmap pointer
+        // without scheduling raster work on each SwiftUI diff pass.
+        var images: [ObjectIdentifier] = []
+        images.reserveCapacity(min(ids.count, 9))
+        for id in ids.prefix(9) {
+            guard let app = model.app(for: id) else { continue }
+            images.append(model.cachedIconIdentity(for: app))
+        }
         return IconRenderIdentity(item: item, children: previewChildren,
                                   images: images,
-                                  size: iconSize, colorVision: model.preferences.colorVision, badgePoints: model.preferences.textPoints(8), dark: colorScheme == .dark)
+                                  size: iconSize, colorVision: appearance.vision,
+                                  badgePoints: 8 * appearance.textScale / 100, dark: colorScheme == .dark)
     }
     var body: some View {
-        Button(action: action) {
+        // Read the preference bundle once instead of copying the whole struct for every
+        // modifier below; this body runs for every visible tile on every scroll frame.
+        let p = appearance
+        let continuous = model.isContinuousScrolling
+        let dragging = model.draggingID
+        return Button(action: action) {
             VStack(spacing: 4) {
-                DockMagnifiedIcon(identity: iconIdentity, image: nativeIcon, enabled: model.preferences.magnificationEnabled && !model.editing && model.draggingID == nil && !reduceMotion,
-                                  animated: model.preferences.animationsEnabled && !reduceMotion,
-                                  wiggling: editing && draggingID == nil && model.preferences.animationsEnabled && !reduceMotion) {
+                DockMagnifiedIcon(identity: iconIdentity, image: nativeIcon, enabled: p.magnify && !model.editing && dragging == nil && !reduceMotion,
+                                  animated: p.animate && !reduceMotion,
+                                  wiggling: editing && draggingID == nil && p.animate && !reduceMotion) {
                 Group {
                 if item.kind == .folder || previewChildren != nil {
                     ZStack {
@@ -577,7 +588,7 @@ struct LauncherTile: View, Equatable {
                         }.padding(4)
                     }.frame(width: iconSize, height: iconSize)
                         .overlay(alignment: .bottomTrailing) {
-                            if previewChildren == nil { Text("\(item.children.count)").lineLimit(1).minimumScaleFactor(0.5).font(.system(size: model.preferences.textPoints(8), weight: .semibold, design: .rounded))
+                            if previewChildren == nil { Text("\(item.children.count)").lineLimit(1).minimumScaleFactor(0.5).font(.system(size: 8 * p.textScale / 100, weight: .semibold, design: .rounded))
                                 .padding(.horizontal, 4).padding(.vertical, 2)
                                 .frame(maxWidth: max(1, iconSize - 6))
                                 .background(.regularMaterial, in: Capsule()).padding(3) }
@@ -587,27 +598,30 @@ struct LauncherTile: View, Equatable {
                 }
                 }
                 }.frame(width: iconSize, height: iconSize)
-                    .opacity(model.draggingID == item.id && !model.usesFreePlacement ? 0.25 : 1)
+                    .opacity(dragging == item.id && !model.usesFreePlacement ? 0.25 : 1)
                 Text(displayName).font(model.applicationLabelFont)
                     .foregroundStyle(model.applicationLabelColor)
                     .lineLimit(2).multilineTextAlignment(.center)
                     .padding(.horizontal, clearBackdrop ? 4 : 0)
                     // Skip the glyph shadow while a gesture or transition is animating;
                     // blurred text shadows are the most expensive per-tile layer effect.
-                    .shadow(color: clearBackdrop && !model.isContinuousScrolling && !model.pageTransitionActive ? (model.preferences.labelColor == .black ? .white.opacity(0.6) : .black.opacity(0.65)) : .clear, radius: 1, y: 1)
-                    .frame(height: model.preferences.labelHeight, alignment: .top)
-                    .opacity(model.preferences.showNames ? 1 : 0).accessibilityHidden(!model.preferences.showNames)
+                    .shadow(color: clearBackdrop && !continuous && !model.pageTransitionActive ? (p.color == .black ? .white.opacity(0.6) : .black.opacity(0.65)) : .clear, radius: 1, y: 1)
+                    .frame(height: p.labelHeight, alignment: .top)
+                    .opacity(p.showNames ? 1 : 0).accessibilityHidden(!p.showNames)
             }
             .padding(.top, 10).padding(.bottom, 4).frame(maxWidth: .infinity)
             .contentShape(Rectangle())
         }
         .zIndex(hovered ? 1 : 0)
-        .buttonStyle(LauncherPressStyle(animated: model.preferences.animationsEnabled && !reduceMotion)).onHover { if model.draggingID == nil && !model.editing {
+        .buttonStyle(LauncherPressStyle(animated: p.animate && !reduceMotion)).onHover { if dragging == nil && !model.editing {
             hovered = $0
             if $0 { model.hoveredAppID = item.appID }
             else if model.hoveredAppID == item.appID { model.hoveredAppID = nil }
-        } }.help(displayName)
-        .animation(reduceMotion || model.isContinuousScrolling || !model.preferences.animationsEnabled || model.draggingID != nil ? nil : .easeOut(duration: 0.12), value: hovered)
+        } }
+        // The label already shows the name, so a tooltip only adds an AppKit tracking
+        // area per tile. Keep it solely for the name-hidden mode where it still helps.
+        .help(p.showNames ? "" : displayName)
+        .animation(reduceMotion || continuous || !p.animate || dragging != nil ? nil : .easeOut(duration: 0.12), value: hovered)
         .overlay {
             if keyboardSelected {
                 RoundedRectangle(cornerRadius: 14).strokeBorder(model.accentColor.opacity(0.65), lineWidth: 1.5)

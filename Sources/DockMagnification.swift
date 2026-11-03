@@ -8,6 +8,8 @@ import QuartzCore
     private struct Entry { weak var view: MagnificationIconView? }
     private var entries: [ObjectIdentifier: Entry] = [:]
     private var magnifiedView: MagnificationIconView?
+    private weak var lastWindow: NSWindow?
+    private var lastPoint: NSPoint?
     private var scrollMonitor: Any?
     private var scrollBusyUntil: CFTimeInterval = 0
     private var waitingForScrollEnd = false
@@ -41,6 +43,8 @@ import QuartzCore
         // every visible icon on every wheel/momentum event.
         magnifiedView?.setScale(1, immediately: true)
         magnifiedView = nil
+        // Tiles moved under a stationary pointer, so the cached hit test is stale.
+        lastPoint = nil
         resumeAfterScroll()
     }
     private func resumeAfterScroll() {
@@ -73,6 +77,10 @@ import QuartzCore
     }
     func update(window: NSWindow?, point: NSPoint) {
         guard enabled else { return }
+        // Trackpad and mouse streams repeat the same location; recomputing the whole
+        // hit test for an unchanged pointer burned a full pass per event.
+        if window === lastWindow, let lastPoint, lastPoint == point { return }
+        lastWindow = window; lastPoint = point
         var target: MagnificationIconView?
         var targetScale: CGFloat = 1
         for entry in entries.values {
@@ -99,7 +107,12 @@ import QuartzCore
             $0.applicationID == appID && $0.window === window && !$0.visibleRect.isEmpty
         }.map { $0.convert($0.bounds, to: content) }
     }
-    func reset() { pendingWindow = nil; magnifiedView?.setScale(1); magnifiedView = nil }
+    func reset() {
+        pendingWindow = nil
+        lastPoint = nil
+        magnifiedView?.setScale(1)
+        magnifiedView = nil
+    }
 }
 
 class MagnificationIconView: NSView {

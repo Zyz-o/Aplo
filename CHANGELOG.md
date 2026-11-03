@@ -1,3 +1,10 @@
+# 3.16.1 — 2026-11-04
+
+- Trim the remaining per-tile work during fast trackpad scrolling: read the appearance bundle once per tile body, drop the redundant name tooltip when labels are visible, and skip magnification hit tests for an unchanged pointer position.
+
+<!-- summary-zh -->
+- 削减快速滑动时每个磁贴的剩余开销：外观参数每帧只读取一次，名称可见时不再重复注册提示气泡，指针位置未变时跳过放大命中测试。
+
 # 3.16.0 — 2026-11-04
 
 - Eliminate scroll hitching on high-refresh trackpads: coalesce raw scroll events to the display refresh rate, defer context menu construction until clicked, pre-chunk continuous vertical grid rows without intermediate allocations, and prune off-screen page hierarchies.
