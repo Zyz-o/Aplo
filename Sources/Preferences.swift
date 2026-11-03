@@ -161,6 +161,8 @@ struct LauncherPreferences: Codable, Equatable {
     var automaticCategories = true
     var animationsEnabled = true
     var windowShadowEnabled = true
+    /// Diagnostics overlay: live frame rate and frame time. Off by default.
+    var showFrameStats = false
     var soundEffectsEnabled = false
     var soundOpen = "Submarine"
     var soundClose = "Glass"
@@ -180,6 +182,7 @@ struct LauncherPreferences: Codable, Equatable {
         case backgroundStyle, appearance, iconSize, showNames, swipeEnabled, reversePaging, automaticCategories
         case verticalPaging, gestureSensitivity, backgroundTransparency, pagingDirection, navigationStyle
         case animationsEnabled, windowShadowEnabled, soundEffectsEnabled, soundOpen, soundClose, soundNavigation, soundVolume
+        case showFrameStats
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -237,6 +240,7 @@ struct LauncherPreferences: Codable, Equatable {
         automaticCategories = try c.decodeIfPresent(Bool.self, forKey: .automaticCategories) ?? true
         animationsEnabled = try c.decodeIfPresent(Bool.self, forKey: .animationsEnabled) ?? true
         windowShadowEnabled = try c.decodeIfPresent(Bool.self, forKey: .windowShadowEnabled) ?? true
+        showFrameStats = try c.decodeIfPresent(Bool.self, forKey: .showFrameStats) ?? false
         soundEffectsEnabled = try c.decodeIfPresent(Bool.self, forKey: .soundEffectsEnabled) ?? false
         soundOpen = try c.decodeIfPresent(String.self, forKey: .soundOpen) ?? "Submarine"
         soundClose = try c.decodeIfPresent(String.self, forKey: .soundClose) ?? "Glass"

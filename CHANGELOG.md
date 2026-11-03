@@ -1,3 +1,12 @@
+# 3.16.2 — 2026-11-04
+
+- Add an optional frame-rate overlay (Appearance settings) reporting live fps, peak frame time and dropped frames, so scroll smoothness can be measured instead of guessed.
+- Build the folder 3×3 preview from fixed stacks instead of a fixed-column grid, removing grid layout work from every folder tile on every pass.
+
+<!-- summary-zh -->
+- 外观设置新增「显示帧率与帧耗时」：实时显示帧率、单帧峰值与掉帧数，滑动是否顺畅可以直接测量。
+- 文件夹的 3×3 预览改为固定栈佈局，不再在每次渲染时运行网格布局。
+
 # 3.16.1 — 2026-11-04
 
 - Trim the remaining per-tile work during fast trackpad scrolling: read the appearance bundle once per tile body, drop the redundant name tooltip when labels are visible, and skip magnification hit tests for an unchanged pointer position.

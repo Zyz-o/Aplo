@@ -302,6 +302,9 @@ struct SettingsView: View {
                 note("开启时显示面板淡入与悬停过渡，遵循系统减少动态效果设置。")
                 Divider()
                 switchRow("窗口阴影", key: \.windowShadowEnabled)
+                Divider()
+                switchRow("显示帧率与帧耗时", key: \.showFrameStats)
+                note("在左上角显示实时帧率、单帧峰值与掉帧数，用于判断滑动是否顺畅。该统计本身会占用少量性能。")
             }
         case .shortcuts:
             card("呼出快捷键", icon: "keyboard") {

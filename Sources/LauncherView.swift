@@ -64,6 +64,14 @@ struct LauncherView: View {
                     .padding(3).help(model.text("拖动右下角调整窗口大小"))
             }
         }
+        .overlay(alignment: .topLeading) {
+            if model.preferences.showFrameStats {
+                FrameStatsOverlay(active: true)
+                    .frame(width: 196, height: 24)
+                    .padding(10)
+                    .allowsHitTesting(false)
+            }
+        }
         .sheet(isPresented: $model.showingPageOrganizer) { PageOrganizer(model: model) }
         .sheet(item: $model.inspectingApp) { app in ApplicationInspector(model: model, app: app) }
         .tint(model.accentColor)
@@ -542,6 +550,29 @@ struct LauncherTile: View, Equatable {
         var seen = Set<String>()
         return (current + incoming).filter { seen.insert($0).inserted }
     }
+    /// The 3×3 folder preview. Built from plain stacks so laying it out costs nothing
+    /// more than fixed frames; a fixed-column grid would run its own layout each pass.
+    @ViewBuilder private func folderPreview(_ ids: [String]) -> some View {
+        let side = iconSize * 0.23
+        let visible = Array(ids.prefix(9))
+        let rows = max(1, (visible.count + 2) / 3)
+        VStack(spacing: 2) {
+            ForEach(0..<rows, id: \.self) { row in
+                HStack(spacing: 2) {
+                    ForEach(0..<3, id: \.self) { column in
+                        let index = row * 3 + column
+                        if visible.indices.contains(index), let app = model.app(for: visible[index]) {
+                            Image(nsImage: model.previewIcon(for: app, notifying: dragFeedback))
+                                .resizable().interpolation(.high)
+                                .frame(width: side, height: side)
+                        } else {
+                            Color.clear.frame(width: side, height: side)
+                        }
+                    }
+                }
+            }
+        }.padding(4)
+    }
     private var nativeIcon: NSImage? {
         guard item.kind == .app, previewChildren == nil, let id = item.appID, let app = model.app(for: id) else { return nil }
         return model.icon(for: app, notifying: dragFeedback)
@@ -579,13 +610,10 @@ struct LauncherTile: View, Equatable {
                             .fill(LinearGradient(colors: [model.accentColor.opacity(0.20), model.accentColor.opacity(0.075)],
                                                  startPoint: .topLeading, endPoint: .bottomTrailing))
                         RoundedRectangle(cornerRadius: 13).strokeBorder(model.accentColor.opacity(0.15))
-                        LazyVGrid(columns: Array(repeating: GridItem(.fixed(iconSize * 0.23), spacing: 2), count: 3), spacing: 2) {
-                            ForEach(Array((previewChildren ?? item.children).prefix(9)), id: \.self) { id in
-                                if let app = model.app(for: id) {
-                                    Image(nsImage: model.previewIcon(for: app, notifying: dragFeedback)).resizable().interpolation(.high).frame(width: iconSize * 0.23, height: iconSize * 0.23)
-                                }
-                            }
-                        }.padding(4)
+                        // Plain stacks instead of a fixed VGrid: the grid runs its own
+                        // column layout on every pass, while three rows of fixed frames
+                        // produce the identical 3×3 preview for a fraction of the cost.
+                        folderPreview(previewChildren ?? item.children)
                     }.frame(width: iconSize, height: iconSize)
                         .overlay(alignment: .bottomTrailing) {
                             if previewChildren == nil { Text("\(item.children.count)").lineLimit(1).minimumScaleFactor(0.5).font(.system(size: 8 * p.textScale / 100, weight: .semibold, design: .rounded))

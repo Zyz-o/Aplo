@@ -15,6 +15,8 @@ enum AppStrings {
         "重置入口、工具栏、收起方式、窗口固定、启动后收起、程序坞、语言、网格和系统应用排序。": "Resets entry points, toolbar, dismissal, pinning, hide after launch, Dock, language, grid and system app ordering.",
         "下载应用优先": "Downloaded Apps First",
         "按名称排序": "Sort by Name",
+        "显示帧率与帧耗时": "Show frame rate and frame time",
+        "在左上角显示实时帧率、单帧峰值与掉帧数，用于判断滑动是否顺畅。该统计本身会占用少量性能。": "Shows live frame rate, peak frame time and dropped frames in the top-left corner so scroll smoothness can be measured. The overlay itself costs a little performance.",
         "下载应用优先显示在前，系统应用排在末尾；网格分页与连续滚动都生效，保留手动布局与文件夹。": "Shows downloaded apps first and system apps at the end, in both paged and continuous scrolling; preserves custom layouts and folders.",
         "当前没有可用的新版。": "No newer release is available.",
         "前往 GitHub 下载": "Download on GitHub",
