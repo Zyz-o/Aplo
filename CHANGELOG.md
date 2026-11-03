@@ -1,3 +1,10 @@
+# 3.16.0 — 2026-11-04
+
+- Eliminate scroll hitching on high-refresh trackpads: coalesce raw scroll events to the display refresh rate, defer context menu construction until clicked, pre-chunk continuous vertical grid rows without intermediate allocations, and prune off-screen page hierarchies.
+
+<!-- summary-zh -->
+- 彻底解决高刷触控板快速滑动掉帧：将高频滚轮手势对齐到显示帧率，上下文右键菜单改为延迟求值，纵向连续滚动采用零堆分配行索引，并精简屏幕外页面层级。
+
 # 3.15.9 — 2026-11-03
 
 - Keep the page strip moving as one composited layer, so a page drag translates the finished image instead of redrawing every tile.

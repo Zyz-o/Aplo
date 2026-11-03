@@ -6,6 +6,8 @@ import UniformTypeIdentifiers
 
 extension AppDelegate {
     func resetPageMotion() {
+        dragUpdateThrottled = false
+        pendingDragOffset = nil
         pagingToken = UUID()
         gestureEndWork?.cancel()
         gestureEndWork = nil
@@ -17,6 +19,8 @@ extension AppDelegate {
     }
 
     func settlePageMotion(cancelled: Bool = false, explicitDelta: Int? = nil) {
+        dragUpdateThrottled = false
+        pendingDragOffset = nil
         gestureEndWork?.cancel()
         gestureStarted = false
         let target = explicitDelta.map { min(max(0, model.pageIndex + $0), model.pageCount - 1) }
@@ -49,6 +53,8 @@ extension AppDelegate {
     }
 
     func finishPendingPage() {
+        dragUpdateThrottled = false
+        pendingDragOffset = nil
         if let target = pendingPageTarget {
             var transaction = Transaction(); transaction.disablesAnimations = true
             withTransaction(transaction) { model.goToPage(target) }
@@ -121,10 +127,26 @@ extension AppDelegate {
             if self.model.pageMotion.axis != axis { self.model.pageMotion.axis = axis }
             self.gestureStarted = true
             self.model.pageTransitionActive = true
-            var transaction = Transaction(); transaction.disablesAnimations = true
-            withTransaction(transaction) {
-                self.model.pageDragOffset = PageMotion.offset(distance: self.pageGesture.distance,
-                    page: self.model.pageIndex, count: self.model.pageCount, width: self.model.pageExtent)
+            let targetOffset = PageMotion.offset(distance: self.pageGesture.distance,
+                page: self.model.pageIndex, count: self.model.pageCount, width: self.model.pageExtent)
+            self.pendingDragOffset = targetOffset
+            if !self.dragUpdateThrottled {
+                self.dragUpdateThrottled = true
+                var transaction = Transaction(); transaction.disablesAnimations = true
+                withTransaction(transaction) {
+                    self.model.pageDragOffset = targetOffset
+                }
+                DispatchQueue.main.async { [weak self] in
+                    guard let self else { return }
+                    self.dragUpdateThrottled = false
+                    guard self.gestureStarted, let offset = self.pendingDragOffset else { return }
+                    if self.model.pageDragOffset != offset {
+                        var transaction = Transaction(); transaction.disablesAnimations = true
+                        withTransaction(transaction) {
+                            self.model.pageDragOffset = offset
+                        }
+                    }
+                }
             }
             self.gestureEndWork?.cancel()
             // Devices without gesture phases get a short inactivity fallback, never momentum-length waiting.

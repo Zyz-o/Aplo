@@ -56,6 +56,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     var pendingPageTarget: Int?
     var lastDiscretePageTime: TimeInterval = 0
     var gestureStarted = false
+    var pendingDragOffset: CGFloat?
+    var dragUpdateThrottled = false
     var pagingToken = UUID()
     var gestureEndWork: DispatchWorkItem?
     let preview = CommandLine.arguments.contains("--preview")

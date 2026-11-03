@@ -237,9 +237,23 @@ struct LauncherView: View {
     }
 
     private func verticalSections(tileHeight: CGFloat) -> some View {
-        LazyVStack(alignment: .leading, spacing: LauncherGeometry.gridSpacing) {
-            // Read the container once; containerItems is a computed property.
-            verticalRows(Array(model.containerItems.enumerated()), tileHeight: tileHeight)
+        let items = model.containerItems
+        let columns = model.columnCount
+        let count = items.count
+        let rowCount = (count + columns - 1) / columns
+        return LazyVStack(alignment: .leading, spacing: LauncherGeometry.gridSpacing) {
+            ForEach(0..<rowCount, id: \.self) { row in
+                let start = row * columns
+                let end = min(count, start + columns)
+                HStack(spacing: LauncherGeometry.gridSpacing) {
+                    ForEach(start..<end, id: \.self) { index in
+                        tile(items[index], index: index)
+                            .frame(width: model.tileWidth, height: tileHeight)
+                    }
+                }
+                .frame(height: tileHeight)
+                .id("row:" + items[start].id)
+            }
         }.frame(width: model.gridWidth).frame(maxWidth: .infinity).padding(.vertical, 4)
     }
 
@@ -257,17 +271,6 @@ struct LauncherView: View {
                     Divider()
                 }.frame(width: model.gridWidth).frame(maxWidth: .infinity).padding(.bottom, 8)
             }
-        }
-    }
-
-    private func verticalRows(_ entries: [(offset: Int, element: LayoutItem)], tileHeight: CGFloat) -> some View {
-        ForEach(Array(stride(from: 0, to: entries.count, by: model.columnCount)), id: \.self) { start in
-            HStack(spacing: LauncherGeometry.gridSpacing) {
-                ForEach(entries[start..<min(entries.count, start + model.columnCount)], id: \.element.id) { entry in
-                    tile(entry.element, index: entry.offset)
-                        .frame(width: model.tileWidth, height: tileHeight)
-                }
-            }.frame(height: tileHeight).id("row:" + entries[start].element.id)
         }
     }
 
@@ -293,37 +296,54 @@ struct LauncherView: View {
     }
 
     private func pageFrames(size: CGSize) -> some View {
-        ForEach((model.pageIndex - 1)...(model.pageIndex + 1), id: \.self) { page in
-            let origin = PageMotion.origin(relativePage: page - model.pageIndex, size: size,
+        let current = model.pageIndex
+        let pages = ((current - 1)...(current + 1)).filter { $0 >= 0 && $0 < model.pageCount }
+        return ForEach(pages, id: \.self) { page in
+            let origin = PageMotion.origin(relativePage: page - current, size: size,
                                            vertical: model.navigationDirection == .vertical)
-            pageContent(page, interactive: page == model.pageIndex)
+            pageContent(page, interactive: page == current)
                 .frame(width: size.width, height: size.height)
                 .offset(x: origin.x, y: origin.y)
-                .allowsHitTesting(page == model.pageIndex)
-                .accessibilityHidden(page != model.pageIndex)
+                .allowsHitTesting(page == current)
+                .accessibilityHidden(page != current)
         }
     }
 
-    private func pageContent(_ page: Int, interactive: Bool) -> some View {
-        ScrollViewReader { proxy in
+    @ViewBuilder private func pageContent(_ page: Int, interactive: Bool) -> some View {
+        let pageItems = model.items(onPage: page)
+        if interactive {
+            ScrollViewReader { proxy in
+                ScrollView(.vertical) {
+                    LazyVGrid(columns: columns, spacing: LauncherGeometry.gridSpacing) {
+                        ForEach(Array(pageItems.enumerated()), id: \.element.id) { index, item in
+                            tile(item, index: index, interactive: true).id(item.id)
+                        }
+                    }.frame(width: model.gridWidth).frame(maxWidth: .infinity)
+                }
+                .scrollIndicators(.hidden)
+                .padding(.top, 4)
+                .onReceive(model.$selectedIndex) { index in
+                    guard page == model.pageIndex, !model.pageTransitionActive, model.draggingID == nil,
+                          model.visibleItems.indices.contains(index) else { return }
+                    // Rapid arrow-key navigation lands on the final selection; the anchor is
+                    // animated so intermediate steps do not queue conflicting scroll offsets.
+                    withAnimation(.easeOut(duration: 0.12)) {
+                        proxy.scrollTo(model.visibleItems[index].id, anchor: .center)
+                    }
+                }
+            }
+        } else {
+            // Off-screen neighbour pages only require a static grid representation:
+            // no ScrollViewReader, no keyboard selection observers, no drag handles.
             ScrollView(.vertical) {
                 LazyVGrid(columns: columns, spacing: LauncherGeometry.gridSpacing) {
-                    ForEach(Array(model.items(onPage: page).enumerated()), id: \.element.id) { index, item in
-                        tile(item, index: index, interactive: interactive).id(item.id)
+                    ForEach(Array(pageItems.enumerated()), id: \.element.id) { index, item in
+                        tile(item, index: index, interactive: false).id(item.id)
                     }
                 }.frame(width: model.gridWidth).frame(maxWidth: .infinity)
             }
             .scrollIndicators(.hidden)
             .padding(.top, 4)
-            .onReceive(model.$selectedIndex) { index in
-                guard page == model.pageIndex, !model.pageTransitionActive, model.draggingID == nil,
-                      model.visibleItems.indices.contains(index) else { return }
-                // Rapid arrow-key navigation lands on the final selection; the anchor is
-                // animated so intermediate steps do not queue conflicting scroll offsets.
-                withAnimation(.easeOut(duration: 0.12)) {
-                    proxy.scrollTo(model.visibleItems[index].id, anchor: .center)
-                }
-            }
         }
     }
 
@@ -419,49 +439,7 @@ struct LauncherView: View {
             }
         }
         .modifier(TileDropModifier(model: model, target: item, width: model.tileWidth, enabled: interactive))
-        .contextMenu {
-            if model.preferences.automaticCategories {
-                if let appID = item.appID, let app = model.app(for: appID) {
-                    Button(model.text("在访达中显示")) { NSWorkspace.shared.activateFileViewerSelecting([app.url]) }
-                }
-                Button(model.text("分类与排列设置")) { model.openSettings() }
-            } else if item.kind == .folder {
-                Button(model.text("重命名")) { model.beginRename(item) }
-                Button(model.text("解散文件夹")) { model.dissolve(item.id) }
-            } else if let appID = item.appID {
-                if let app = model.app(for: appID) {
-                    Button(model.text("在访达中显示")) { NSWorkspace.shared.activateFileViewerSelecting([app.url]) }
-                    Divider()
-                }
-                if model.layout.folders.contains(where: { $0.children.contains(appID) }) {
-                    Button(model.text("移出文件夹")) { model.moveApp(appID, toFolder: nil) }
-                } else {
-                    Button(model.text("新建文件夹")) { model.createFolder(containing: appID) }
-                }
-                if !model.layout.folders.isEmpty {
-                    Menu(model.text("移入文件夹")) {
-                        ForEach(model.layout.folders.filter { $0.id != model.openFolderID }) { folder in
-                            Button(model.name(for: folder)) { model.moveApp(appID, toFolder: folder.id) }
-                        }
-                    }
-                }
-            }
-            if let appID = item.appID {
-                Divider()
-                Button(model.text("隐藏应用")) { model.setAppHidden(appID, hidden: true) }
-                if let app = model.app(for: appID) {
-                    Divider()
-                    Button(model.text("应用速览")) { model.inspectingApp = app }
-                    Button(model.text("显示包内容")) { NSWorkspace.shared.open(app.url.appendingPathComponent("Contents", isDirectory: true)) }
-                    Button(model.text("拷贝路径")) { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(app.url.path, forType: .string) }
-                    Button(model.text("在终端中打开所在目录")) {
-                        NSWorkspace.shared.open([app.url.deletingLastPathComponent()], withApplicationAt: URL(fileURLWithPath: "/System/Applications/Utilities/Terminal.app"), configuration: NSWorkspace.OpenConfiguration())
-                    }
-                    Button(model.text("移至废纸篓…"), role: .destructive) { model.onTrashApplication?(app) }
-                        .disabled(app.isSystemApplication || app.bundleIdentifier == AppCatalog.ownBundleIdentifier)
-                }
-            }
-        }
+        .modifier(TileContextMenuModifier(model: model, item: item, enabled: interactive))
     }
 
     private var visiblePageRange: Range<Int> {
@@ -651,6 +629,69 @@ private struct TileDropModifier: ViewModifier {
             content.onDrop(of: [launcherDragType], delegate: TileDropDelegate(model: model, target: target, width: width))
         } else {
             content
+        }
+    }
+}
+
+private struct TileContextMenuModifier: ViewModifier {
+    let model: LauncherModel
+    let item: LayoutItem
+    let enabled: Bool
+    func body(content: Content) -> some View {
+        if enabled {
+            content.contextMenu {
+                TileContextMenu(model: model, item: item)
+            }
+        } else {
+            content
+        }
+    }
+}
+
+private struct TileContextMenu: View {
+    let model: LauncherModel
+    let item: LayoutItem
+    var body: some View {
+        if model.preferences.automaticCategories {
+            if let appID = item.appID, let app = model.app(for: appID) {
+                Button(model.text("在访达中显示")) { NSWorkspace.shared.activateFileViewerSelecting([app.url]) }
+            }
+            Button(model.text("分类与排列设置")) { model.openSettings() }
+        } else if item.kind == .folder {
+            Button(model.text("重命名")) { model.beginRename(item) }
+            Button(model.text("解散文件夹")) { model.dissolve(item.id) }
+        } else if let appID = item.appID {
+            if let app = model.app(for: appID) {
+                Button(model.text("在访达中显示")) { NSWorkspace.shared.activateFileViewerSelecting([app.url]) }
+                Divider()
+            }
+            if model.layout.folders.contains(where: { $0.children.contains(appID) }) {
+                Button(model.text("移出文件夹")) { model.moveApp(appID, toFolder: nil) }
+            } else {
+                Button(model.text("新建文件夹")) { model.createFolder(containing: appID) }
+            }
+            if !model.layout.folders.isEmpty {
+                Menu(model.text("移入文件夹")) {
+                    ForEach(model.layout.folders.filter { $0.id != model.openFolderID }) { folder in
+                        Button(model.name(for: folder)) { model.moveApp(appID, toFolder: folder.id) }
+                    }
+                }
+            }
+        }
+        if let appID = item.appID {
+            Divider()
+            Button(model.text("隐藏应用")) { model.setAppHidden(appID, hidden: true) }
+            if let app = model.app(for: appID) {
+                Divider()
+                Button(model.text("应用速览")) { model.inspectingApp = app }
+                Button(model.text("显示包内容")) { NSWorkspace.shared.open(app.url.appendingPathComponent("Contents", isDirectory: true)) }
+                Button(model.text("拷贝路径")) { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(app.url.path, forType: .string) }
+                Button(model.text("在终端中打开所在目录")) {
+                    NSWorkspace.shared.open([app.url.deletingLastPathComponent()], withApplicationAt: URL(fileURLWithPath: "/System/Applications/Utilities/Terminal.app"), configuration: NSWorkspace.OpenConfiguration())
+                }
+                Button(model.text("移至废纸篓…"), role: .destructive) { model.onTrashApplication?(app) }
+                    .disabled(app.isSystemApplication || app.bundleIdentifier == AppCatalog.ownBundleIdentifier)
+            }
         }
     }
 }
