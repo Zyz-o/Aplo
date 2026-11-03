@@ -1,3 +1,14 @@
+# 3.15.6 — 2026-11-03
+
+- The system-last display ordering now applies to paged grids as well as continuous scrolling, without rewriting saved layouts.
+- Folder sorting uses the same localized display names as the root grid, and multi-page page jumps animate with the spring transition.
+- Slightly longer spring settle time removes a residual snap at the end of page gestures.
+
+<!-- summary-zh -->
+- 「系统应用排在最后」在网格分页模式下同样生效，仅调整显示顺序，不改写已保存布局。
+- 文件夹内排序与根网格一致，按当前语言的显示名排序；跨多页跳转也使用弹簧动画。
+- 弹簧动画收尾时间略微延长，消除翻页结束瞬间的像素吸附。
+
 # 3.15.5 — 2026-11-03
 
 - Add name sorting and non-system apps first to the Arrange menu. Back up the layout before saving the new order.

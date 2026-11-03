@@ -222,7 +222,7 @@ struct SettingsView: View {
                     Button(model.text("刷新列表")) { model.requestRefresh(resetSearch: false) }
                 }
                 switchRow("系统应用排在最后", key: \.systemAppsLast)
-                note("下载应用优先显示在前，系统应用排在末尾；保留手动布局与文件夹。")
+                note("下载应用优先显示在前，系统应用排在末尾；网格分页与连续滚动都生效，保留手动布局与文件夹。")
             }
         case .appearance:
             AppearanceLivePreview(model: model)

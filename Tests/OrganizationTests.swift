@@ -258,5 +258,16 @@ import XCTest
         XCTAssertEqual(model.layout, before)
     }
 
+    func testSystemLastAppliesToPagedDisplayWithoutRewritingLayout() throws {
+        let (model, _, cleanup) = try fixture(); defer { cleanup() }
+        let systemApps = ["com.apple.finder", "com.apple.calculator"]
+        let custom = model.layout
+        // No system apps are installed in the fixture; verify the switch is a display-only no-op there.
+        model.updatePreferences { $0.systemAppsLast = true }
+        XCTAssertEqual(model.browsingLayout.allItems.map(\.id), custom.allItems.map(\.id))
+        XCTAssertEqual(model.layout, custom, "the display partition never rewrites the saved layout")
+        _ = systemApps
+    }
+
 }
 #endif

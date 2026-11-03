@@ -143,7 +143,7 @@ final class LauncherModel: ObservableObject {
     var onPreferencesChanged: ((PreferenceChanges) -> Void)?
     @Published private(set) var preferences: LauncherPreferences { didSet {
         cachedContainerItems = nil
-        if oldValue.hiddenAppIDs != preferences.hiddenAppIDs || oldValue.automaticCategories != preferences.automaticCategories || oldValue.systemAppsLast != preferences.systemAppsLast { cachedBrowsingLayout = nil }
+        if oldValue.hiddenAppIDs != preferences.hiddenAppIDs || oldValue.automaticCategories != preferences.automaticCategories || oldValue.systemAppsLast != preferences.systemAppsLast { cachedBrowsingLayout = nil; cachedDisplayPages = nil }
     } }
     @Published var presentingAppearancePreview = false { didSet { onAppearancePreviewChanged?() } }
     var onAppearancePreviewChanged: (() -> Void)?
@@ -263,12 +263,17 @@ final class LauncherModel: ObservableObject {
         if let cachedBrowsingLayout { return cachedBrowsingLayout }
         var visible = preferences.automaticCategories ? categorizedLayout : layout
         let hidden = preferences.hiddenAppIDs
-        guard !hidden.isEmpty else { cachedBrowsingLayout = visible; return visible }
-        visible.pages = visible.pages.map { page in page.compactMap { item in
-            if item.kind == .app { return item.appID.map { hidden.contains($0) } == true ? nil : item }
-            var folder = item; folder.children.removeAll { hidden.contains($0) }
-            return folder.children.isEmpty ? nil : folder
-        } }.filter { !$0.isEmpty }
+        if !hidden.isEmpty {
+            visible.pages = visible.pages.map { page in page.compactMap { item in
+                if item.kind == .app { return item.appID.map { hidden.contains($0) } == true ? nil : item }
+                var folder = item; folder.children.removeAll { hidden.contains($0) }
+                return folder.children.isEmpty ? nil : folder
+            } }.filter { !$0.isEmpty }
+        }
+        if preferences.systemAppsLast {
+            // Display-only partition: downloaded apps fill the leading pages, system apps trail.
+            visible.pages = Self.systemLastDisplayPages(visible.pages, appsByID: lookup)
+        }
         if visible.pages.isEmpty { visible.pages = [[]] }
         cachedBrowsingLayout = visible
         return visible
@@ -301,6 +306,18 @@ final class LauncherModel: ObservableObject {
         }
         cachedContainerItems = items
         return items
+    }
+
+    /// Display-only page partition used when 系统应用排在最后 is enabled in paged mode:
+    /// downloaded items fill the leading pages, system items trail, folders keep their members.
+    private static func systemLastDisplayPages(_ pages: [[LayoutItem]], appsByID: [String: InstalledApp]) -> [[LayoutItem]] {
+        let items = pages.flatMap { $0 }
+        guard items.contains(where: { AppClassifier.systemLast([$0], appsByID: appsByID).first?.id != $0.id }) else { return pages }
+        let ordered = AppClassifier.systemLast(items, appsByID: appsByID)
+        let repaginated = stride(from: 0, to: ordered.count, by: max(1, LauncherLayout.pageSize)).map {
+            Array(ordered[$0..<min(ordered.count, $0 + LauncherLayout.pageSize)])
+        }
+        return repaginated.isEmpty ? [[]] : repaginated
     }
     var pageCount: Int {
         if !isSearching && openFolder == nil { return max(1, rootDisplayPages.count) }
@@ -604,20 +621,14 @@ final class LauncherModel: ObservableObject {
         updated.freePositions?[freePositionKey(id)] = FreeIconPosition(x: min(1, max(0, x)), y: min(1, max(0, y)))
         _ = commit(updated)
     }
-    func shuffleLayout() {
+    /// Shared transaction for menu-driven reordering: back up, transform the open folder or
+    /// the whole root layout, then commit as a single undoable organization edit.
+    private func performLayoutReorder(failureMessage: LocalizedMessage, _ transform: (inout LauncherLayout) -> Void) {
         withOrganizationEdit {
             do { _ = try store.archiveCurrent() }
-            catch { message = "无法备份布局，未打乱排列。"; return }
+            catch { message = failureMessage; return }
             var updated = layout
-            if let folderID = openFolderID, layout.folders.contains(where: { $0.id == folderID }) {
-                for page in updated.pages.indices {
-                    if let index = updated.pages[page].firstIndex(where: { $0.id == folderID }) { updated.pages[page][index].children.shuffle() }
-                }
-            } else {
-                let items = updated.allItems.shuffled()
-                updated.pages = stride(from: 0, to: items.count, by: LauncherLayout.pageSize).map { Array(items[$0..<min($0 + LauncherLayout.pageSize, items.count)]) }
-                if updated.pages.isEmpty { updated.pages = [[]] }
-            }
+            transform(&updated)
             guard commit(updated) else { return }
             updatePreferences {
                 if isFullscreen { $0.arrangement = .grid } else { $0.compactArrangement = .grid }
@@ -626,19 +637,38 @@ final class LauncherModel: ObservableObject {
             pageIndex = 0; selectedIndex = 0
         }
     }
+
+    /// Folder children are plain app IDs, so sort by the localized name the user actually sees.
+    private func childName(_ appID: String) -> String {
+        (lookup[appID]?.name).map { preferences.language.usesTraditionalChinese ? text($0) : $0 } ?? text("应用")
+    }
+
+    private func repaginate(_ items: [LayoutItem]) -> [[LayoutItem]] {
+        let pages = stride(from: 0, to: items.count, by: LauncherLayout.pageSize).map { Array(items[$0..<min($0 + LauncherLayout.pageSize, items.count)]) }
+        return pages.isEmpty ? [[]] : pages
+    }
+
+    func shuffleLayout() {
+        performLayoutReorder(failureMessage: "无法备份布局，未打乱排列。") { updated in
+            if let folderID = openFolderID, layout.folders.contains(where: { $0.id == folderID }) {
+                for page in updated.pages.indices {
+                    if let index = updated.pages[page].firstIndex(where: { $0.id == folderID }) { updated.pages[page][index].children.shuffle() }
+                }
+            } else {
+                updated.pages = repaginate(updated.allItems.shuffled())
+            }
+        }
+    }
     func organizeDownloadedFirst() {
-        withOrganizationEdit {
-            do { _ = try store.archiveCurrent() }
-            catch { message = "无法备份布局，未调整排列。"; return }
-            var updated = layout
+        performLayoutReorder(failureMessage: "无法备份布局，未调整排列。") { updated in
             if let folderID = openFolderID, layout.folders.contains(where: { $0.id == folderID }) {
                 for page in updated.pages.indices {
                     if let index = updated.pages[page].firstIndex(where: { $0.id == folderID }) {
                         let children = updated.pages[page][index].children
                         let downloaded = children.filter { self.lookup[$0]?.isSystemApplication != true }
-                            .sorted { (self.lookup[$0]?.name ?? "").localizedStandardCompare(self.lookup[$1]?.name ?? "") == .orderedAscending }
+                            .sorted { self.childName($0).localizedStandardCompare(self.childName($1)) == .orderedAscending }
                         let system = children.filter { self.lookup[$0]?.isSystemApplication == true }
-                            .sorted { (self.lookup[$0]?.name ?? "").localizedStandardCompare(self.lookup[$1]?.name ?? "") == .orderedAscending }
+                            .sorted { self.childName($0).localizedStandardCompare(self.childName($1)) == .orderedAscending }
                         updated.pages[page][index].children = downloaded + system
                     }
                 }
@@ -648,44 +678,22 @@ final class LauncherModel: ObservableObject {
                     .sorted { self.name(for: $0).localizedStandardCompare(self.name(for: $1)) == .orderedAscending }
                 let system = items.filter { self.isSystemItem($0) }
                     .sorted { self.name(for: $0).localizedStandardCompare(self.name(for: $1)) == .orderedAscending }
-                let combined = downloaded + system
-                updated.pages = stride(from: 0, to: combined.count, by: LauncherLayout.pageSize).map {
-                    Array(combined[$0..<min($0 + LauncherLayout.pageSize, combined.count)])
-                }
-                if updated.pages.isEmpty { updated.pages = [[]] }
+                updated.pages = self.repaginate(downloaded + system)
             }
-            guard commit(updated) else { return }
-            updatePreferences {
-                if isFullscreen { $0.arrangement = .grid } else { $0.compactArrangement = .grid }
-                $0.automaticCategories = false
-            }
-            pageIndex = 0; selectedIndex = 0
         }
     }
     func sortByName() {
-        withOrganizationEdit {
-            do { _ = try store.archiveCurrent() }
-            catch { message = "无法备份布局，未调整排列。"; return }
-            var updated = layout
+        performLayoutReorder(failureMessage: "无法备份布局，未调整排列。") { updated in
             if let folderID = openFolderID, layout.folders.contains(where: { $0.id == folderID }) {
                 for page in updated.pages.indices {
                     if let index = updated.pages[page].firstIndex(where: { $0.id == folderID }) {
-                        updated.pages[page][index].children.sort { (self.lookup[$0]?.name ?? "").localizedStandardCompare(self.lookup[$1]?.name ?? "") == .orderedAscending }
+                        updated.pages[page][index].children.sort { self.childName($0).localizedStandardCompare(self.childName($1)) == .orderedAscending }
                     }
                 }
             } else {
                 let items = updated.allItems.sorted { self.name(for: $0).localizedStandardCompare(self.name(for: $1)) == .orderedAscending }
-                updated.pages = stride(from: 0, to: items.count, by: LauncherLayout.pageSize).map {
-                    Array(items[$0..<min($0 + LauncherLayout.pageSize, items.count)])
-                }
-                if updated.pages.isEmpty { updated.pages = [[]] }
+                updated.pages = self.repaginate(items)
             }
-            guard commit(updated) else { return }
-            updatePreferences {
-                if isFullscreen { $0.arrangement = .grid } else { $0.compactArrangement = .grid }
-                $0.automaticCategories = false
-            }
-            pageIndex = 0; selectedIndex = 0
         }
     }
     func toggleEditing() {

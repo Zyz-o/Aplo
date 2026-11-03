@@ -15,7 +15,7 @@ enum AppStrings {
         "重置入口、工具栏、收起方式、窗口固定、启动后收起、程序坞、语言、网格和系统应用排序。": "Resets entry points, toolbar, dismissal, pinning, hide after launch, Dock, language, grid and system app ordering.",
         "下载应用优先": "Downloaded Apps First",
         "按名称排序": "Sort by Name",
-        "下载应用优先显示在前，系统应用排在末尾；保留手动布局与文件夹。": "Shows downloaded apps first and system apps at the end; preserves custom layouts and folders.",
+        "下载应用优先显示在前，系统应用排在末尾；网格分页与连续滚动都生效，保留手动布局与文件夹。": "Shows downloaded apps first and system apps at the end, in both paged and continuous scrolling; preserves custom layouts and folders.",
         "当前没有可用的新版。": "No newer release is available.",
         "前往 GitHub 下载": "Download on GitHub",
         "发现新版本": "New Version Available",
