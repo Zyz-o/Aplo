@@ -8,7 +8,14 @@ struct InstalledApp: Identifiable, Equatable, Sendable {
     let bundleIdentifier: String?
     let categoryIdentifier: String?
     let searchAliases: [String]
-    var isSystemApplication: Bool { url.standardizedFileURL.path.hasPrefix("/System/") }
+    var isSystemApplication: Bool {
+        guard bundleIdentifier?.lowercased().hasPrefix("com.apple.") == true else { return false }
+        let path = url.standardizedFileURL.path
+        return path == "/System/Library/CoreServices/Finder.app"
+            || ["/System/Applications/", "/System/Library/CoreServices/Applications/",
+                "/System/Cryptexes/App/System/Applications/",
+                "/System/Volumes/Preboot/Cryptexes/App/System/Applications/"].contains(where: path.hasPrefix)
+    }
     init(id: String, name: String, url: URL, bundleIdentifier: String?, categoryIdentifier: String? = nil, searchAliases: [String] = []) {
         self.id = id; self.name = name; self.url = url
         self.bundleIdentifier = bundleIdentifier; self.categoryIdentifier = categoryIdentifier

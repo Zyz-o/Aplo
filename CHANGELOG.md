@@ -1,3 +1,10 @@
+# 3.15.3 — 2026-11-03
+
+- Restrict system classification to Apple bundles in macOS app locations and categorize Tailscale as networking.
+
+<!-- summary-zh -->
+- 修正系统应用识别：数据卷中的普通应用不归入系统区，保留 Safari 等系统自带应用；Tailscale 归入网络与浏览。
+
 # 3.15.2 — 2026-11-03
 
 - Preserve native trackpad momentum for vertical scrolling and render fixed-height lazy rows. Add recent launches and a system-app section to the vertical home view.

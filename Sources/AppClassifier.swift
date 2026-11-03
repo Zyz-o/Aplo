@@ -25,7 +25,7 @@ enum AppClassifier {
         // Several Electron applications declare generic developer metadata; correct known cases first.
         if ["com.bytedance.douyin", "com.bilibili.", "com.soda.music", "com.netease.163music", "com.lemon.lvpro"].contains(where: knownID.hasPrefix) { return .media }
         if knownID == "com.tencent.qq" || ["com.tencent.xinwechat", "com.tencent.foxmail", "com.apple.mail", "com.apple.facetime", "com.apple.ichat"].contains(where: knownID.hasPrefix) { return .communication }
-        if ["com.apple.safari", "com.google.chrome", "org.mozilla.firefox", "io.github.clash-verge", "com.cpa.gui"].contains(where: knownID.hasPrefix) { return .internet }
+        if ["com.apple.safari", "com.google.chrome", "org.mozilla.firefox", "io.github.clash-verge", "com.cpa.gui", "io.tailscale.", "com.tailscale."].contains(where: knownID.hasPrefix) { return .internet }
         if knownID.hasPrefix("com.anthropic.claude") { return .productivity }
         if ["com.baidu.baidunetdisk", "com.quark.clouddrive", "com.netease.uuremote"].contains(where: knownID.hasPrefix) { return .utilities }
         if let value = app.categoryIdentifier?.lowercased() {
@@ -46,7 +46,6 @@ enum AppClassifier {
         if ["photos", "preview", "imagecapture", "screenshot"].contains(where: id.contains) { return .creative }
         if ["notes", "reminders", "calendar", "wps", "pages", "numbers", "keynote", "chatgpt", "claude"].contains(where: id.contains) { return .productivity }
         if ["网盘", "远程", "cleaner", "magpie", "launchnext", "calculator"].contains(where: names.contains) { return .utilities }
-        if app.url.path.hasPrefix("/System/") { return .system }
         return .other
     }
 

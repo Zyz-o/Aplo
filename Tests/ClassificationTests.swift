@@ -31,6 +31,13 @@ import Foundation
         let systemMedia = app("com.apple.music", "Music", "public.app-category.music", "/System/Applications/Music.app")
         expect(!appleDeveloper.isSystemApplication && systemMedia.isSystemApplication, "system provenance depends on installation path rather than the Apple identifier prefix")
         expect(AppClassifier.category(for: systemMedia) == .system, "system applications stay in the final system category despite their content metadata")
+        let safari = app("com.apple.Safari", "Safari", nil, "/System/Volumes/Preboot/Cryptexes/App/System/Applications/Safari.app")
+        let thirdParty = app("com.example.tool", "Tool", "public.app-category.utilities", "/System/Applications/Tool.app")
+        let dataVolumeApp = app("com.apple.dt.Xcode", "Xcode", "public.app-category.developer-tools", "/System/Volumes/Data/Applications/Xcode.app")
+        expect(safari.isSystemApplication, "Safari in the resolved macOS Cryptex is a system app")
+        expect(!thirdParty.isSystemApplication && AppClassifier.category(for: thirdParty) == .utilities, "a system-looking path alone cannot classify third-party apps as system")
+        expect(!dataVolumeApp.isSystemApplication && AppClassifier.category(for: dataVolumeApp) == .development, "apps on the Data volume are not system apps")
+        expect(AppClassifier.category(for: app("io.tailscale.ipn.macsys", "Tailscale")) == .internet, "Tailscale belongs to networking")
         let orderedApps = [systemMedia, apps[0], apps[4], apps[1]]
         let map = Dictionary(uniqueKeysWithValues: orderedApps.map { ($0.id, $0) })
         let items = orderedApps.map { LayoutItem.app($0.id) }
