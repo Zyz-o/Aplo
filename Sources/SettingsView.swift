@@ -419,6 +419,7 @@ struct SettingsView: View {
                 }
             }
         case .updates:
+            card("软件更新", icon: "arrow.down.circle") { UpdateCheckView(model: model, version: version) }
             ForEach(ReleaseNote.bundled) { entry in
                 card(entry.title, icon: "sparkles") {
                     Text(.init(entry.summary(language: model.preferences.language))).font(.system(size: model.preferences.textPoints(13)))

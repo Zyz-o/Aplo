@@ -55,5 +55,9 @@ jobs:
 
           Includes the corresponding source archive and SHA-256 checksums. GPL-3.0; see LICENSE and THIRD_PARTY_NOTICES.md for LaunchNext / LaunchNow attribution. Changes are documented in CHANGELOG.md.
           NOTES
+          if awk '/^# / { if (++version > 1) exit } version == 1 { print }' CHANGELOG.md > /tmp/aplo-current-changelog.md; then
+            printf '\n' >> /tmp/aplo-release-notes.md
+            cat /tmp/aplo-current-changelog.md >> /tmp/aplo-release-notes.md
+          fi
           gh release create "$tag" "dist/Aplo-$APLO_VERSION-macOS-arm64.zip" "dist/Aplo-$APLO_VERSION-source.zip" dist/SHA256SUMS.txt \
             --target "$GITHUB_SHA" --title "Aplo $APLO_VERSION — macOS Preview" --prerelease --notes-file /tmp/aplo-release-notes.md

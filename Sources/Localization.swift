@@ -7,6 +7,14 @@ enum AppStrings {
     }
     private static let cache = TranslationCache()
     static let english: [String: String] = [
+        "当前没有可用的新版。": "No newer release is available.",
+        "前往 GitHub 下载": "Download on GitHub",
+        "发现新版本": "New Version Available",
+        "发现新预览版": "New Preview Available",
+        "暂时无法检查更新，请稍后重试。": "Unable to check for updates. Try again later.",
+        "仅在点击时联网，不会自动下载或安装。": "Checks only when requested. Nothing is downloaded or installed automatically.",
+        "检查更新": "Check for Updates",
+        "软件更新": "Software Update",
         "不启用": "Disabled", "小窗口": "Compact", "全屏": "Full Screen",
         "第 %@ 页": "Page %@",
         "横向／分页行数": "Horizontal / Paged Rows",

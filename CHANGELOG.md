@@ -1,3 +1,11 @@
+# 3.15.1 — 2026-11-03
+
+- Add manual checks for published GitHub releases with a complete arm64 download. Show release notes and link to GitHub.
+
+<!-- summary-zh -->
+- 在「更新内容」页加入手动检查更新。发现新版时显示版本、预览版标识和更新说明，可前往 GitHub 下载。
+- 仅在点击时联网，不自动下载或安装。
+
 # 3.15.0 — 2026-11-03
 
 - Add optional F4 and dwell-based hot corner entry points without changing system keyboard or Dock settings. F4 registration reports conflicts; Apple search keys may require Fn+F4.
