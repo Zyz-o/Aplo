@@ -115,5 +115,33 @@ import XCTest
         XCTAssertFalse(source.icon === pending)
         withExtendedLifetime((modelSubscription, tileSubscription)) {}
     }
+    func testNoticeTimerNeverDismissesReplacementErrors() async throws {
+        let (model, defaults, cleanup) = fixture(); defer { cleanup() }
+        model.noticeDuration = .milliseconds(20)
+        model.message = .notice("计算结果已拷贝。")
+        try await Task.sleep(for: .milliseconds(60))
+        XCTAssertNil(model.message)
+        model.message = .notice("计算结果已拷贝。")
+        model.message = "文件夹名称不能为空。"
+        try await Task.sleep(for: .milliseconds(60))
+        XCTAssertEqual(model.message?.template, "文件夹名称不能为空。")
+        model.lastSettingsCategory = "appearance"
+        XCTAssertEqual(defaults.string(forKey: "aplo.lastSettingsCategory.v1"), "appearance")
+        XCTAssertNil(defaults.data(forKey: "aplo.preferences.v1"))
+    }
+    func testNewPreferenceMigrationAndHotCornerGeometry() async throws {
+        let old = try JSONDecoder().decode(LauncherPreferences.self, from: Data("{}".utf8))
+        XCTAssertFalse(old.f4ShortcutEnabled); XCTAssertEqual(old.hotCorner, "off")
+        XCTAssertEqual(old.folderNavigation, "inherit"); XCTAssertEqual(old.compactGridColumns, 0)
+        var p = old; p.hotCorner = "bottomRight"; p.folderNavigation = "continuous"; p.f4ShortcutEnabled = true; p.compactGridRows = 5
+        XCTAssertEqual(try JSONDecoder().decode(LauncherPreferences.self, from: JSONEncoder().encode(p)), p)
+        let rect = CGRect(x: -1000, y: 30, width: 1000, height: 800)
+        XCTAssertTrue(HotCornerController.contains(CGPoint(x: -999, y: 829), screen: rect, corner: "topLeft"))
+        XCTAssertFalse(HotCornerController.contains(CGPoint(x: -980, y: 810), screen: rect, corner: "topLeft"))
+        XCTAssertFalse(HotCornerController.contains(CGPoint(x: -999, y: 829), screen: rect, corner: "off"))
+        XCTAssertTrue(PreferenceChanges(from: old, to: p).contains(.navigation))
+        XCTAssertTrue(PreferenceChanges(from: old, to: p).contains(.hotKeys))
+    }
+
 }
 #endif

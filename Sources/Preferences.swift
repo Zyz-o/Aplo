@@ -10,15 +10,17 @@ struct PreferenceChanges: OptionSet {
     static let frame = Self(rawValue: 1 << 4)
     static let navigation = Self(rawValue: 1 << 5)
     static let deferredSave = Self(rawValue: 1 << 6)
+    static let hotKeys = Self(rawValue: 1 << 7)
     init(rawValue: Int) { self.rawValue = rawValue }
     init(from old: LauncherPreferences, to new: LauncherPreferences) {
         self = []
+        if old.f4ShortcutEnabled != new.f4ShortcutEnabled || old.hotCorner != new.hotCorner { insert(.hotKeys) }
         if old.appearance != new.appearance { insert(.appearance) }
         if old.language != new.language || old.entryLocation != new.entryLocation { insert(.menus) }
         if old.entryLocation != new.entryLocation { insert(.entry) }
         if old.pinToDesktop != new.pinToDesktop || old.dismissStyle != new.dismissStyle || old.windowShadowEnabled != new.windowShadowEnabled || old.dockVisibility != new.dockVisibility { insert(.window) }
         if old.dockVisibility != new.dockVisibility { insert(.frame) }
-        if old.navigationStyle != new.navigationStyle || old.pagingDirection != new.pagingDirection || old.reversePaging != new.reversePaging || old.swipeEnabled != new.swipeEnabled || old.arrangement != new.arrangement || old.compactArrangement != new.compactArrangement || old.automaticCategories != new.automaticCategories { insert(.navigation) }
+        if old.folderNavigation != new.folderNavigation || old.navigationStyle != new.navigationStyle || old.pagingDirection != new.pagingDirection || old.reversePaging != new.reversePaging || old.swipeEnabled != new.swipeEnabled || old.arrangement != new.arrangement || old.compactArrangement != new.compactArrangement || old.automaticCategories != new.automaticCategories || old.compactGridColumns != new.compactGridColumns || old.fullscreenGridColumns != new.fullscreenGridColumns || old.compactGridRows != new.compactGridRows || old.fullscreenGridRows != new.fullscreenGridRows { insert(.navigation) }
         var continuous = new
         continuous.backgroundTransparency = old.backgroundTransparency
         continuous.iconScalePercent = old.iconScalePercent; continuous.textScalePercent = old.textScalePercent
@@ -117,6 +119,13 @@ struct FreeIconPosition: Codable, Equatable, Sendable {
     var y: Double
 }
 struct LauncherPreferences: Codable, Equatable {
+    var hotCorner: String = "off"
+    var folderNavigation: String = "inherit"
+    var f4ShortcutEnabled = false
+    var compactGridColumns = 0
+    var fullscreenGridColumns = 0
+    var compactGridRows = 0
+    var fullscreenGridRows = 0
     var labelFontFamily = ""
     var labelWeight: LauncherLabelWeight = .regular
     var labelColor: LauncherLabelColor = .automatic
@@ -160,6 +169,8 @@ struct LauncherPreferences: Codable, Equatable {
 
     init() {}
     private enum CodingKeys: String, CodingKey {
+        case hotCorner, folderNavigation
+        case f4ShortcutEnabled, compactGridColumns, fullscreenGridColumns, compactGridRows, fullscreenGridRows
         case hiddenAppIDs
         case labelFontFamily, labelWeight, labelColor, labelColorHex
         case entryLocation, toolbarPosition, dismissStyle, launchAutoHide, pinToDesktop, magnificationEnabled
@@ -172,6 +183,18 @@ struct LauncherPreferences: Codable, Equatable {
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
+        hotCorner = (try? c.decode(String.self, forKey: .hotCorner)) ?? "off"
+        if !["off", "topLeft", "topRight", "bottomLeft", "bottomRight"].contains(hotCorner) { hotCorner = "off" }
+        folderNavigation = (try? c.decode(String.self, forKey: .folderNavigation)) ?? "inherit"
+        if !["inherit", "continuous", "paged"].contains(folderNavigation) { folderNavigation = "inherit" }
+        f4ShortcutEnabled = (try? c.decode(Bool.self, forKey: .f4ShortcutEnabled)) ?? false
+        let compactColumns = (try? c.decode(Int.self, forKey: .compactGridColumns)) ?? 0
+        let fullColumns = (try? c.decode(Int.self, forKey: .fullscreenGridColumns)) ?? 0
+        let compactRows = (try? c.decode(Int.self, forKey: .compactGridRows)) ?? 0
+        let fullRows = (try? c.decode(Int.self, forKey: .fullscreenGridRows)) ?? 0
+        compactGridColumns = compactColumns == 0 ? 0 : min(12, max(2, compactColumns))
+        fullscreenGridColumns = fullColumns == 0 ? 0 : min(12, max(2, fullColumns))
+        compactGridRows = min(8, max(0, compactRows)); fullscreenGridRows = min(8, max(0, fullRows))
         hiddenAppIDs = Set(((try? c.decode([String].self, forKey: .hiddenAppIDs)) ?? []).prefix(10_000).filter { !$0.isEmpty && $0.count <= 2048 })
         labelFontFamily = String(((try? c.decode(String.self, forKey: .labelFontFamily)) ?? "").prefix(120))
         labelWeight = (try? c.decode(LauncherLabelWeight.self, forKey: .labelWeight)) ?? .regular
@@ -222,7 +245,6 @@ struct LauncherPreferences: Codable, Equatable {
         soundVolume = volume.isFinite ? min(1, max(0, volume)) : 0.5
     }
 
-    var brandIconPoints: CGFloat { 44 * CGFloat(brandIconPercent / 100) }
     var brandNamePoints: CGFloat { 20 * CGFloat(brandNamePercent / 100) }
     func iconPoints(fullscreen: Bool) -> CGFloat { (fullscreen ? 78 : 72) * CGFloat(iconScalePercent / 100) }
     func textPoints(_ base: CGFloat) -> CGFloat { base * CGFloat(textScalePercent / 100) }
@@ -251,6 +273,12 @@ struct PreferencesStore {
 
 /// Point-based geometry stays sharp on Retina and fits smaller external displays.
 enum LauncherGeometry {
+    static let compactCornerRadius: CGFloat = 22
+    static let smallControlHeight: CGFloat = 32
+    static let toolbarHeight: CGFloat = 40
+    static let resizeHandleSize: CGFloat = 30
+    static let launchEffectDuration: TimeInterval = 0.20
+    static let messageTransitionDuration: TimeInterval = 0.18
     static let compactSize = CGSize(width: 960, height: 660)
     static func compactFrame(in visibleFrame: CGRect) -> CGRect {
         let availableWidth = max(0, visibleFrame.width - 32)

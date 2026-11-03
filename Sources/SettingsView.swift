@@ -60,10 +60,14 @@ struct SettingsView: View {
         let keywords: [SettingsCategory: String] = [
             .general: "显示 窗口 语言 分类 排列 程序坞 桌面 收起 display window language categories dock launch hide",
             .appearance: "主题 背景 透明度 字体 颜色 图标 大小 动画 appearance background transparency font color icon size animation",
-            .shortcuts: "快捷键 滚动 翻页 灵敏度 keyboard shortcut scroll sensitivity",
+            .shortcuts: "快捷键 热角 文件夹 滚动 翻页 灵敏度 F4 keyboard shortcut hot corner folder scroll sensitivity",
             .sound: "声音 音效 音量 sound volume", .hidden: "隐藏 应用 hidden apps",
             .backup: "备份 恢复 导入 历史 backup restore import history", .updates: "更新 内容 update release", .about: "关于 版本 许可 about license version"]
         return SettingsCategory.allCases.filter { settingsQuery.isEmpty || (model.text($0.title) + " " + (keywords[$0] ?? "")).localizedCaseInsensitiveContains(settingsQuery) }
+    }
+    init(model: LauncherModel) {
+        self.model = model
+        _category = State(initialValue: SettingsCategory(rawValue: model.lastSettingsCategory) ?? .general)
     }
     private var version: String { Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "3.14.1" }
     private var appIcon: NSImage {
@@ -95,6 +99,7 @@ struct SettingsView: View {
                 }.scrollIndicators(.hidden).id(category)
             }.padding(20).frame(maxWidth: .infinity, maxHeight: .infinity)
         }.background(.ultraThinMaterial)
+            .onChange(of: category) { model.lastSettingsCategory = $0.rawValue }
             .confirmationDialog(model.text("恢复本页默认"), isPresented: $resettingPage) {
                 Button(model.text("恢复本页默认")) { resetPage() }
                 Button(model.text("取消"), role: .cancel) {}
@@ -204,6 +209,12 @@ struct SettingsView: View {
                 }
                 note("选择排列方式会关闭自动分类。网格中拖到边缘可调整顺序，拖到中心可合并；自由放置中直接拖到想要的位置，松手保存。全屏与小窗口各自记忆。")
             }
+            card("网格密度", icon: "square.grid.3x3") {
+                gridControls("小窗口", columns: \.compactGridColumns, rows: \.compactGridRows)
+                Divider()
+                gridControls("全屏", columns: \.fullscreenGridColumns, rows: \.fullscreenGridRows)
+                note("自动沿用原布局密度。行数用于横向连续画布和分页；空间不足时允许滚动。自定义网格仅调整显示分页，不改写原布局。")
+            }
             card("应用列表", icon: "square.grid.2x2") {
                 HStack {
                     Text(model.text("已发现 \(model.apps.count) 个应用"))
@@ -304,6 +315,33 @@ struct SettingsView: View {
                     Button(model.text("恢复默认")) { model.resetShortcut() }.disabled(model.recordingShortcut)
                 }
                 note("至少包含 ⌘、⌃ 或 ⌥。Esc 取消录制，冲突时保留原快捷键。")
+            }
+            card("F4 备选呼出键", icon: "keyboard") {
+                switchRow("启用 F4 呼出", key: \.f4ShortcutEnabled)
+                if !model.f4ShortcutAvailable { note("F4 已被占用，请继续使用原快捷键或菜单栏入口。") }
+                note("默认关闭，不修改系统键盘设置。部分键盘需要 Fn＋F4；带搜索图案的按键可能仍打开 Spotlight。")
+            }
+            card("屏幕热角", icon: "arrow.up.left.and.arrow.down.right") {
+                HStack {
+                    Text(model.text("停留角落呼出")); Spacer()
+                    Picker(model.text("停留角落呼出"), selection: preference(\.hotCorner)) {
+                        Text(model.text("不启用")).tag("off")
+                        Text(model.text("左上角")).tag("topLeft"); Text(model.text("右上角")).tag("topRight")
+                        Text(model.text("左下角")).tag("bottomLeft"); Text(model.text("右下角")).tag("bottomRight")
+                    }.labelsHidden().frame(maxWidth: 220)
+                }
+                note("鼠标在角落停留片刻后打开。默认关闭；若系统热角使用同一角落，建议选择其他位置。")
+            }
+            card("文件夹浏览", icon: "square.grid.3x3") {
+                HStack {
+                    Text(model.text("文件夹浏览方式")); Spacer()
+                    Picker(model.text("文件夹浏览方式"), selection: preference(\.folderNavigation)) {
+                        Text(model.text("跟随主界面")).tag("inherit")
+                        Text(model.text("纵向连续滚动")).tag("continuous")
+                        Text(model.text("分页切换")).tag("paged")
+                    }.labelsHidden().frame(maxWidth: 250)
+                }
+                note("仅改变文件夹内的浏览方式，不改变主界面或应用顺序。")
             }
             card("浏览与滚动", icon: "hand.draw") {
                 HStack {
@@ -426,6 +464,7 @@ struct SettingsView: View {
                 p.dismissStyle = defaults.dismissStyle; p.pinToDesktop = defaults.pinToDesktop
                 p.launchAutoHide = defaults.launchAutoHide; p.dockVisibility = defaults.dockVisibility
                 p.language = defaults.language; p.systemAppsLast = defaults.systemAppsLast
+                p.compactGridColumns = 0; p.fullscreenGridColumns = 0; p.compactGridRows = 0; p.fullscreenGridRows = 0
             case .appearance:
                 p.labelFontFamily = defaults.labelFontFamily; p.labelWeight = defaults.labelWeight
                 p.labelColor = defaults.labelColor; p.labelColorHex = defaults.labelColorHex
@@ -436,6 +475,7 @@ struct SettingsView: View {
                 p.magnificationEnabled = defaults.magnificationEnabled; p.animationsEnabled = defaults.animationsEnabled
                 p.windowShadowEnabled = defaults.windowShadowEnabled
             case .shortcuts:
+                p.f4ShortcutEnabled = defaults.f4ShortcutEnabled; p.hotCorner = "off"; p.folderNavigation = "inherit"
                 p.swipeEnabled = defaults.swipeEnabled; p.reversePaging = defaults.reversePaging
                 p.pagingDirection = defaults.pagingDirection; p.navigationStyle = defaults.navigationStyle
                 p.gestureSensitivity = defaults.gestureSensitivity
@@ -444,6 +484,22 @@ struct SettingsView: View {
                 p.soundClose = defaults.soundClose; p.soundNavigation = defaults.soundNavigation
                 p.soundVolume = defaults.soundVolume
             default: break
+            }
+        }
+    }
+
+    private func gridControls(_ title: String, columns: WritableKeyPath<LauncherPreferences, Int>, rows: WritableKeyPath<LauncherPreferences, Int>) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(model.text(title)).fontWeight(.medium)
+            HStack {
+                Picker(model.text("列数"), selection: preference(columns)) {
+                    Text(model.text("自动")).tag(0)
+                    ForEach(2...12, id: \.self) { Text(String($0)).tag($0) }
+                }
+                Picker(model.text("横向／分页行数"), selection: preference(rows)) {
+                    Text(model.text("自动")).tag(0)
+                    ForEach(1...8, id: \.self) { Text(String($0)).tag($0) }
+                }
             }
         }
     }

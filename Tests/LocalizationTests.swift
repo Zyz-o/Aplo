@@ -41,5 +41,13 @@ final class LocalizationTests: XCTestCase {
         let enter = ShortcutBinding(keyCode: UInt32(kVK_Return), modifiers: UInt32(cmdKey), keyName: "回车")
         XCTAssertEqual(enter.localizedDisplayName(language: .english), "⌘Return")
     }
+    func testNewInterfaceStringsHaveEnglishEntries() {
+        for key in ["小窗口", "全屏", "网格密度", "横向／分页行数", "不启用", "多选应用", "批量移动或合并", "文件夹浏览方式", "屏幕热角", "F4 备选呼出键"] {
+            XCTAssertNotEqual(AppStrings.text(key, language: .english), key)
+        }
+        let page: LocalizedMessage = "第 \(3) 页"
+        XCTAssertEqual(page.localized(language: .english), "Page 3")
+    }
+
 }
 #endif

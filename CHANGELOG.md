@@ -1,3 +1,21 @@
+# 3.15.0 — 2026-11-03
+
+- Add optional F4 and dwell-based hot corner entry points without changing system keyboard or Dock settings. F4 registration reports conflicts; Apple search keys may require Fn+F4.
+- Add independent compact/fullscreen grid density, search category filters and folder-only vertical scrolling or paging. Grid reflow leaves stored layouts intact.
+- Add opt-in multi-selection with batch dragging, grouping and folder/page moves, and whole-page drag reordering with arrow controls. Organization remains undoable and display layouts stay independent. Page reordering uses saved pages and is available with automatic grid density.
+- Export native application file URLs during drags to support dropping installed apps onto the macOS Dock. Folders remain internal; external drags advertise copy, never file movement.
+- Auto-dismiss informational notices while retaining errors, animate launch icons and editing hints with native layers, respect Reduce Motion, improve empty states and remember the last settings category.
+- Cache filtered browsing layouts and display-page reflow; split application window, input, gesture and dialog responsibilities. Preserve legacy branding fields and storage identity.
+- Add regression coverage for batch grouping at its original slot, single-step undo, layout isolation, page ordering, grid reflow, folder navigation, notice replacement, preference migration and search filtering.
+
+<!-- summary-zh -->
+- 新增可选 F4 呼出和屏幕热角；不改系统键盘或程序坞设置。
+- 全屏与小窗可分别调整行列；搜索增加分类筛选，文件夹可独立选择纵向滚动或分页。
+- 新增多选、批量拖动／分组／移入文件夹，以及整页拖动换序，均可撤销。页面换序需使用自动行列。
+- 应用可原生拖到 macOS 程序坞；普通提示自动淡出，错误保留关闭按钮。
+- 加入启动图标动画、整理轻微抖动和空态提示，并记住上次设置页面；系统“减少动态效果”会关闭这些动画。
+- 保留原有数据位置、双布局及偏好，修复批量合并时的位置与成员一致性。
+
 # 3.14.1 — 2026-11-03
 
 - Store notification templates separately from interpolation arguments, localizing at render time. Preserve app names and system error details verbatim and support language changes while a message is visible.

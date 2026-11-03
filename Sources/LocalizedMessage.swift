@@ -13,6 +13,9 @@ struct LocalizedMessage: Equatable, Sendable, ExpressibleByStringLiteral, Expres
             }
         }
     }
+    enum Presentation: Equatable, Sendable { case persistent, notice }
+    private(set) var presentation: Presentation = .persistent
+    static func notice(_ value: LocalizedMessage) -> LocalizedMessage { var copy = value; copy.presentation = .notice; return copy }
     let template: String
     let arguments: [Argument]
     init(_ source: String) { template = source; arguments = [] }

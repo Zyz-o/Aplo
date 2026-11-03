@@ -33,7 +33,9 @@ final class LauncherModel: ObservableObject {
         didSet { if oldValue != isFullscreen && !switchingDisplayMode { switchLayoutMode(from: oldValue) } }
     }
     private var switchingDisplayMode = false
-    @Published var displayWidth: CGFloat = 960
+    @Published var displayWidth: CGFloat = 960 {
+        didSet { if oldValue != displayWidth { pageIndex = min(pageIndex, pageCount - 1); selectedIndex = min(selectedIndex, max(0, visibleItems.count - 1)) } }
+    }
     // High-frequency input updates only the page strip, never the app grid or text field.
     let pageMotion = PagePresentation()
     var pageDragOffset: CGFloat {
@@ -48,14 +50,38 @@ final class LauncherModel: ObservableObject {
     @Published var pageHeight: CGFloat = 400
     var pageWidth: CGFloat { max(1, displayWidth - 2 * LauncherGeometry.contentInset(fullscreen: isFullscreen)) }
     var pageExtent: CGFloat { pageMotion.axis == .vertical ? max(1, pageHeight) : pageWidth }
-    var columnCount: Int { LauncherGeometry.columnCount(displayWidth: displayWidth, fullscreen: isFullscreen) }
+    var requestedColumns: Int { isFullscreen ? preferences.fullscreenGridColumns : preferences.compactGridColumns }
+    var requestedRows: Int { isFullscreen ? preferences.fullscreenGridRows : preferences.compactGridRows }
+    var customGridEnabled: Bool { requestedColumns != 0 || requestedRows != 0 }
+    var columnCount: Int { requestedColumns == 0 ? LauncherGeometry.columnCount(displayWidth: displayWidth, fullscreen: isFullscreen) : min(12, max(2, requestedColumns)) }
+    var tileWidth: CGFloat { max(1, (gridWidth - CGFloat(columnCount - 1) * LauncherGeometry.gridSpacing) / CGFloat(columnCount)) }
+    var displayedIconSize: CGFloat { min(preferences.iconPoints(fullscreen: isFullscreen), max(24, tileWidth - 18)) }
+    var displayPageCapacity: Int { customGridEnabled ? columnCount * max(1, requestedRows == 0 ? 3 : requestedRows) : LauncherLayout.pageSize }
+    func fittedRows(height: CGFloat, tileHeight: CGFloat) -> Int {
+        let fitting = max(1, Int((height + 2) / (tileHeight + LauncherGeometry.gridSpacing)))
+        return min(fitting, requestedRows == 0 ? (isFullscreen ? 100 : 3) : requestedRows)
+    }
+    var rootDisplayPages: [[LayoutItem]] {
+        let source = browsingLayout
+        guard customGridEnabled else { return source.pages }
+        let items = source.allItems, capacity = displayPageCapacity
+        if let cachedDisplayPages, cachedDisplayPages.capacity == capacity { return cachedDisplayPages.pages }
+        let pages = items.isEmpty ? [[]] : stride(from: 0, to: items.count, by: capacity).map { Array(items[$0..<min(items.count, $0 + capacity)]) }
+        cachedDisplayPages = (capacity, pages); return pages
+    }
     var gridWidth: CGFloat { LauncherGeometry.gridWidth(displayWidth: displayWidth, fullscreen: isFullscreen) }
     var onResetWindowPosition: (() -> Void)?
     var onDisplayModeRequested: (() -> Void)?
     var onMinimize: (() -> Void)?
-    @Published var query = "" { didSet { cachedContainerItems = nil; filter() } }
+    @Published var query = "" { didSet { if !isSearching { searchCategory = nil }; cachedContainerItems = nil; filter() } }
     @Published private(set) var initialDiscoveryPending = true
     @Published private(set) var apps: [InstalledApp] = []
+    @Published private(set) var searchCategory: AppCategory?
+    private var searchCategoryCounts: [AppCategory: Int] = [:]
+    private var categoriesByID: [String: AppCategory] = [:]
+    var availableSearchCategories: [AppCategory] { AppCategory.allCases.filter { searchCategoryCounts[$0, default: 0] > 0 } }
+    func count(for category: AppCategory) -> Int { searchCategoryCounts[category, default: 0] }
+    func selectSearchCategory(_ category: AppCategory?) { searchCategory = category; filter() }
     @Published private(set) var results: [InstalledApp] = [] { didSet { cachedContainerItems = nil } }
     @Published var keyboardSelectionActive = false
     @Published private(set) var keyboardNavigationGeneration = 0
@@ -69,9 +95,9 @@ final class LauncherModel: ObservableObject {
     var onNavigate: (() -> Void)?
     var onPageRequested: ((Int) -> Void)?
     @Published private(set) var selectedIndex = 0 { didSet { if oldValue != selectedIndex { onNavigate?() } } }
-    @Published private(set) var layout: LauncherLayout { didSet { cachedContainerItems = nil } }
+    @Published private(set) var layout: LauncherLayout { didSet { cachedContainerItems = nil; cachedBrowsingLayout = nil } }
     @Published private(set) var pageIndex = 0 { didSet { if oldValue != pageIndex { onNavigate?() } } }
-    @Published private(set) var openFolderID: String? { didSet { cachedContainerItems = nil } }
+    @Published private(set) var openFolderID: String? { didSet { cachedContainerItems = nil; selectedItemIDs = []; pageMotion.axis = navigationDirection == .vertical ? .vertical : .horizontal } }
     var hoveredAppID: String?
     @Published var inspectingApp: InstalledApp?
     var onSystemCommand: ((SystemCommand) -> Void)?
@@ -81,7 +107,7 @@ final class LauncherModel: ObservableObject {
         switch result {
         case .calculation(let value):
             NSPasteboard.general.clearContents(); NSPasteboard.general.setString(value, forType: .string)
-            message = "计算结果已拷贝。"
+            message = .notice("计算结果已拷贝。")
         case .command(let command): onSystemCommand?(command)
         }
     }
@@ -89,13 +115,36 @@ final class LauncherModel: ObservableObject {
         guard draggingID == nil, !editing else { return }
         inspectingApp = (!keyboardSelectionActive ? hoveredAppID.flatMap { app(for: $0) } : nil) ?? selectedApp
     }
-    @Published var message: LocalizedMessage?
+    @Published var message: LocalizedMessage? { didSet { scheduleMessageDismissal() } }
+    private var messageDismissal: Task<Void, Never>?
+    var noticeDuration: Duration = .seconds(4)
+    private func scheduleMessageDismissal() {
+        messageDismissal?.cancel(); messageDismissal = nil
+        guard let message, message.presentation == .notice else { return }
+        let delay = noticeDuration
+        messageDismissal = Task { @MainActor [weak self] in
+            do { try await Task.sleep(for: delay) } catch { return }
+            guard let self, self.message == message, !self.importInProgress else { return }
+            self.message = nil
+        }
+    }
+    var lastSettingsCategory: String {
+        get { preferencesStore.defaults.string(forKey: "aplo.lastSettingsCategory.v1") ?? "general" }
+        set { preferencesStore.defaults.set(newValue, forKey: "aplo.lastSettingsCategory.v1") }
+    }
     @Published var focusGeneration = 0
     @Published var shortcutAvailable = true
-    @Published var editing = false
+    @Published var f4ShortcutAvailable = true
+    @Published var editing = false { didSet { if !editing { multiSelectionActive = false; selectedItemIDs = [] } } }
+    @Published var multiSelectionActive = false
+    @Published private(set) var selectedItemIDs: Set<String> = []
+    @Published var showingPageOrganizer = false
     var onSettingsVisibilityChanged: (() -> Void)?
     var onPreferencesChanged: ((PreferenceChanges) -> Void)?
-    @Published private(set) var preferences: LauncherPreferences { didSet { cachedContainerItems = nil } }
+    @Published private(set) var preferences: LauncherPreferences { didSet {
+        cachedContainerItems = nil
+        if oldValue.hiddenAppIDs != preferences.hiddenAppIDs || oldValue.automaticCategories != preferences.automaticCategories { cachedBrowsingLayout = nil }
+    } }
     @Published var presentingAppearancePreview = false { didSet { onAppearancePreviewChanged?() } }
     var onAppearancePreviewChanged: (() -> Void)?
     @Published var searchExpanded = false
@@ -169,7 +218,9 @@ final class LauncherModel: ObservableObject {
     private var lookup: [String: InstalledApp] = [:]
     private var startupMessage: String?
     private var canWriteLayout = true
-    private var categorizedLayout = LauncherLayout() { didSet { cachedContainerItems = nil } }
+    private var categorizedLayout = LauncherLayout() { didSet { cachedContainerItems = nil; cachedBrowsingLayout = nil } }
+    private var cachedBrowsingLayout: LauncherLayout? { didSet { cachedDisplayPages = nil } }
+    private var cachedDisplayPages: (capacity: Int, pages: [[LayoutItem]])?
     private var cachedContainerItems: [LayoutItem]?
 
     init(catalog: AppCatalog = AppCatalog(includeSystemApplications: true), store: LayoutStore = .standard, defaults: UserDefaults = .standard) {
@@ -189,7 +240,7 @@ final class LauncherModel: ObservableObject {
             }
         }
         layout.prepareDisplayMode(fullscreen: isFullscreen)
-        pageMotion.axis = preferences.pagingDirection == .vertical ? .vertical : .horizontal
+        pageMotion.axis = navigationDirection == .vertical ? .vertical : .horizontal
     }
 
     private func switchLayoutMode(from previousMode: Bool) {
@@ -209,15 +260,17 @@ final class LauncherModel: ObservableObject {
     var visibleApplicationCount: Int { apps.filter { !preferences.hiddenAppIDs.contains($0.id) }.count }
     var isSearching: Bool { !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     var browsingLayout: LauncherLayout {
+        if let cachedBrowsingLayout { return cachedBrowsingLayout }
         var visible = preferences.automaticCategories ? categorizedLayout : layout
         let hidden = preferences.hiddenAppIDs
-        guard !hidden.isEmpty else { return visible }
+        guard !hidden.isEmpty else { cachedBrowsingLayout = visible; return visible }
         visible.pages = visible.pages.map { page in page.compactMap { item in
             if item.kind == .app { return item.appID.map { hidden.contains($0) } == true ? nil : item }
             var folder = item; folder.children.removeAll { hidden.contains($0) }
             return folder.children.isEmpty ? nil : folder
         } }.filter { !$0.isEmpty }
         if visible.pages.isEmpty { visible.pages = [[]] }
+        cachedBrowsingLayout = visible
         return visible
     }
     var openFolder: LayoutItem? { browsingLayout.folders.first { $0.id == openFolderID } }
@@ -233,20 +286,24 @@ final class LauncherModel: ObservableObject {
         return items
     }
     var pageCount: Int {
-        if !isSearching && openFolder == nil { return max(1, browsingLayout.pages.count) }
-        return max(1, (containerItems.count + LauncherLayout.pageSize - 1) / LauncherLayout.pageSize)
+        if !isSearching && openFolder == nil { return max(1, rootDisplayPages.count) }
+        return max(1, (containerItems.count + displayPageCapacity - 1) / displayPageCapacity)
     }
-    var isContinuousScrolling: Bool { preferences.navigationStyle == .continuous || usesFreePlacement }
+    var navigationDirection: LauncherPagingDirection { openFolderID != nil && preferences.folderNavigation == "continuous" ? .vertical : preferences.pagingDirection }
+    var isContinuousScrolling: Bool {
+        if openFolderID != nil && preferences.folderNavigation != "inherit" { return preferences.folderNavigation == "continuous" }
+        return preferences.navigationStyle == .continuous || usesFreePlacement
+    }
     var visibleItems: [LayoutItem] { isContinuousScrolling ? containerItems : items(onPage: pageIndex) }
     func items(onPage page: Int) -> [LayoutItem] {
         guard page >= 0 else { return [] }
         if !isSearching && openFolder == nil {
-            return browsingLayout.pages.indices.contains(page) ? browsingLayout.pages[page] : []
+            return rootDisplayPages.indices.contains(page) ? rootDisplayPages[page] : []
         }
         let items = containerItems
-        let start = page * LauncherLayout.pageSize
+        let start = page * displayPageCapacity
         guard start < items.count else { return [] }
-        return Array(items[start..<min(start + LauncherLayout.pageSize, items.count)])
+        return Array(items[start..<min(start + displayPageCapacity, items.count)])
     }
     var selectedItem: LayoutItem? {
         visibleItems.indices.contains(selectedIndex) ? visibleItems[selectedIndex] : nil
@@ -258,7 +315,7 @@ final class LauncherModel: ObservableObject {
         editing = true
         draggingID = id
     }
-    var canOrganize: Bool { !preferences.automaticCategories && editing && !isSearching && !showingSettings }
+    var canOrganize: Bool { !importInProgress && !preferences.automaticCategories && editing && !isSearching && !showingSettings }
     var shortcutDisplayName: String { layout.shortcut.localizedDisplayName(language: preferences.language) }
     var shortcutLabel: String { shortcutAvailable ? shortcutDisplayName : text("菜单栏打开") }
     var dropDescription: String { if usesFreePlacement { return "拖动图标自由放置 · 整理菜单可返回网格" }; return dropHint ?? (openFolder == nil ? "拖到图标中心分组，边缘排序" : "拖放排序 · 右键可移出文件夹") }
@@ -272,7 +329,7 @@ final class LauncherModel: ObservableObject {
         let previousOrganization = organizationChanged ? organizationState : nil
         let hiddenChanged = updated.hiddenAppIDs != preferences.hiddenAppIDs
         let orderingChanged = updated.systemAppsLast != preferences.systemAppsLast
-        let navigationChanged = updated.navigationStyle != preferences.navigationStyle || updated.pagingDirection != preferences.pagingDirection
+        let navigationChanged = PreferenceChanges(from: preferences, to: updated).contains(.navigation)
         let categoryChanged = updated.automaticCategories != preferences.automaticCategories
         let languageChanged = updated.language != preferences.language
         let changes = PreferenceChanges(from: preferences, to: updated)
@@ -407,6 +464,7 @@ final class LauncherModel: ObservableObject {
             clearOrganizationHistory()
             apps = inventory
             categorizedLayout = AppClassifier.layout(for: apps)
+            categoriesByID = Dictionary(uniqueKeysWithValues: apps.map { ($0.id, AppClassifier.category(for: $0)) })
             if let preparedIndex { searchIndex.install(preparedIndex) }
             else { searchIndex.update(apps) }
             lookup = Dictionary(uniqueKeysWithValues: apps.map { ($0.id, $0) })
@@ -442,7 +500,10 @@ final class LauncherModel: ObservableObject {
     }
 
     private func filter() {
-        results = searchIndex.matching(apps.filter { !preferences.hiddenAppIDs.contains($0.id) }, query: query)
+        let matches = searchIndex.matching(apps.filter { !preferences.hiddenAppIDs.contains($0.id) }, query: query)
+        searchCategoryCounts = [:]
+        for app in matches { searchCategoryCounts[categoriesByID[app.id] ?? .other, default: 0] += 1 }
+        results = searchCategory.map { category in matches.filter { categoriesByID[$0.id] == category } } ?? matches
         pageIndex = 0
         selectedIndex = 0
         draggingID = nil
@@ -464,22 +525,22 @@ final class LauncherModel: ObservableObject {
             return
         }
         if isContinuousScrolling {
-            if preferences.pagingDirection == .horizontal && (abs(offset) == 1 || abs(offset) == columnCount) {
+            if navigationDirection == .horizontal && (abs(offset) == 1 || abs(offset) == columnCount) {
                 selectedIndex = LauncherGeometry.horizontalNeighbor(index: selectedIndex, offset: offset, itemCount: containerItems.count, rows: horizontalRowCount, columns: columnCount)
             } else { selectedIndex = min(max(0, selectedIndex + offset), containerItems.count - 1) }
             return
         }
         if !isSearching && openFolder == nil {
-            let before = browsingLayout.pages.prefix(pageIndex).reduce(0) { $0 + $1.count }
+            let before = rootDisplayPages.prefix(pageIndex).reduce(0) { $0 + $1.count }
             var target = min(max(before + selectedIndex + offset, 0), containerItems.count - 1)
-            for (index, page) in browsingLayout.pages.enumerated() {
+            for (index, page) in rootDisplayPages.enumerated() {
                 if target < page.count { pageIndex = index; selectedIndex = target; return }
                 target -= page.count
             }
         } else {
-            let target = min(max(pageIndex * LauncherLayout.pageSize + selectedIndex + offset, 0), containerItems.count - 1)
-            pageIndex = target / LauncherLayout.pageSize
-            selectedIndex = target % LauncherLayout.pageSize
+            let target = min(max(pageIndex * displayPageCapacity + selectedIndex + offset, 0), containerItems.count - 1)
+            pageIndex = target / displayPageCapacity
+            selectedIndex = target % displayPageCapacity
         }
     }
     func requestPage(_ page: Int) {
@@ -488,7 +549,7 @@ final class LauncherModel: ObservableObject {
         else { goToPage(target) }
     }
     func changePage(by delta: Int) {
-        if isContinuousScrolling { moveSelection(by: delta * LauncherLayout.pageSize) }
+        if isContinuousScrolling { moveSelection(by: delta * displayPageCapacity) }
         else { requestPage(pageIndex + delta) }
     }
     func goToPage(_ page: Int) {
@@ -508,7 +569,7 @@ final class LauncherModel: ObservableObject {
         focusGeneration += 1
     }
     var activeArrangement: LauncherArrangement { isFullscreen ? preferences.arrangement : preferences.compactArrangement ?? .grid }
-    var usesFreePlacement: Bool { activeArrangement == .free && !preferences.automaticCategories && !isSearching }
+    var usesFreePlacement: Bool { openFolderID == nil && activeArrangement == .free && !preferences.automaticCategories && !isSearching }
     func chooseArrangement(_ arrangement: LauncherArrangement) {
         updatePreferences {
             if isFullscreen { $0.arrangement = arrangement } else { $0.compactArrangement = arrangement }
@@ -624,6 +685,9 @@ final class LauncherModel: ObservableObject {
 
     func drop(_ sourceID: String, onto targetID: String, position: ItemDropPosition) {
         guard sourceID != targetID, canOrganize else { return }
+        if multiSelectionActive && selectedItemIDs.contains(sourceID) && selectedItemIDs.count > 1 {
+            dropSelection(onto: targetID, position: position); return
+        }
         var updated = layout
         guard let source = updated.remove(sourceID) else { return }
         if let folderID = openFolderID {
@@ -659,7 +723,25 @@ final class LauncherModel: ObservableObject {
         }
     }
     func drop(_ sourceID: String, toPage requestedPage: Int) {
-        guard canOrganize, requestedPage >= 0, requestedPage <= layout.pages.count else { return }
+        guard canOrganize, requestedPage >= 0 else { return }
+        if multiSelectionActive && selectedItemIDs.contains(sourceID) && selectedItemIDs.count > 1 {
+            moveSelection(toPage: requestedPage); return
+        }
+        if customGridEnabled {
+            guard rootDisplayPages.indices.contains(requestedPage),
+                  let anchor = rootDisplayPages[requestedPage].last(where: { $0.id != sourceID }) else { endDrag(); return }
+            var updated = layout
+            guard let source = updated.remove(sourceID) else { endDrag(); return }
+            for page in updated.pages.indices {
+                if let index = updated.pages[page].firstIndex(where: { $0.id == anchor.id }) {
+                    updated.pages[page].insert(source, at: index + 1)
+                    if commitReconciled(updated) { goToPage(requestedPage) }
+                    endDrag(); return
+                }
+            }
+            endDrag(); return
+        }
+        guard requestedPage <= layout.pages.count else { return }
         var updated = layout
         guard let source = updated.remove(sourceID) else { return }
         if requestedPage == updated.pages.count { updated.pages.append([]) }
@@ -826,5 +908,110 @@ extension LauncherModel {
         else { undoStates.removeLast(); redoStates.append(current) }
         canUndoOrganization = !undoStates.isEmpty; canRedoOrganization = !redoStates.isEmpty
         endDrag(); renamingFolderID = nil; openFolderID = nil; query = ""
+    }
+}
+
+
+extension LauncherModel {
+    var selectedAppIDs: [String] { containerItems.filter { selectedItemIDs.contains($0.id) }.compactMap(\.appID) }
+    func toggleMultiSelection() {
+        guard !isSearching, !showingSettings, !importInProgress else { return }
+        if !multiSelectionActive {
+            chooseArrangement(.grid); editing = true; multiSelectionActive = true
+        } else { multiSelectionActive = false }
+        selectedItemIDs = []
+    }
+    func toggleItemSelection(_ item: LayoutItem) {
+        guard multiSelectionActive, item.kind == .app else { return }
+        if !selectedItemIDs.insert(item.id).inserted { selectedItemIDs.remove(item.id) }
+    }
+    func dragItems(startingAt id: String) -> [LayoutItem] {
+        if multiSelectionActive, selectedItemIDs.contains(id) { return containerItems.filter { selectedItemIDs.contains($0.id) } }
+        return containerItems.filter { $0.id == id }
+    }
+    func createFolderFromSelection() {
+        let ids = selectedAppIDs
+        guard canOrganize, ids.count > 1 else { return }
+        var updated = layout
+        let selected = Set(ids.map { "app:" + $0 })
+        // Replace the first selected root slot, before removing the remaining apps.
+        guard let page = updated.pages.firstIndex(where: { $0.contains { selected.contains($0.id) } }),
+              let slot = updated.pages[page].firstIndex(where: { selected.contains($0.id) }) else { return }
+        let anchorID = updated.pages[page][slot].id
+        for id in ids where "app:" + id != anchorID { _ = updated.remove("app:" + id) }
+        guard let anchor = updated.pages[page].firstIndex(where: { $0.id == anchorID }) else { return }
+        let folder = LayoutItem.folder(children: ids)
+        updated.pages[page][anchor] = folder
+        if commitReconciled(updated) { selectedItemIDs = []; beginRename(folder) }
+    }
+    func moveSelection(toFolder folderID: String?) {
+        let ids = selectedAppIDs
+        guard canOrganize, !ids.isEmpty else { return }
+        var updated = layout
+        if let folderID {
+            guard folderID != openFolderID, updated.folders.contains(where: { $0.id == folderID }) else { return }
+            for id in ids { _ = updated.remove("app:" + id) }
+            for page in updated.pages.indices {
+                if let slot = updated.pages[page].firstIndex(where: { $0.id == folderID }) { updated.pages[page][slot].children += ids }
+            }
+        } else {
+            for id in ids { _ = updated.remove("app:" + id) }
+            updated.pages[updated.pages.count - 1] += ids.map { .app($0) }
+        }
+        if commitReconciled(updated) { selectedItemIDs = [] }; endDrag()
+    }
+    func dropSelection(onto targetID: String, position: ItemDropPosition) {
+        let ids = selectedAppIDs
+        guard canOrganize, !ids.isEmpty, !selectedItemIDs.contains(targetID) else { endDrag(); return }
+        var updated = layout
+        for id in ids { _ = updated.remove("app:" + id) }
+        if let folderID = openFolderID {
+            for page in updated.pages.indices {
+                if let slot = updated.pages[page].firstIndex(where: { $0.id == folderID }),
+                   let target = updated.pages[page][slot].children.firstIndex(where: { "app:" + $0 == targetID }) {
+                    updated.pages[page][slot].children.insert(contentsOf: ids, at: target + (position == .after ? 1 : 0))
+                    if commitReconciled(updated) { selectedItemIDs = [] }; endDrag(); return
+                }
+            }
+        } else {
+            for page in updated.pages.indices {
+                guard let slot = updated.pages[page].firstIndex(where: { $0.id == targetID }) else { continue }
+                let target = updated.pages[page][slot]
+                if position == .center {
+                    if target.kind == .folder { updated.pages[page][slot].children += ids }
+                    else if let id = target.appID { updated.pages[page][slot] = .folder(children: [id] + ids) }
+                } else { updated.pages[page].insert(contentsOf: ids.map { .app($0) }, at: slot + (position == .after ? 1 : 0)) }
+                if commitReconciled(updated) { selectedItemIDs = [] }; endDrag(); return
+            }
+        }
+        endDrag()
+    }
+    func moveSelection(toPage page: Int) {
+        let ids = selectedAppIDs
+        guard canOrganize, !ids.isEmpty, page >= 0 else { return }
+        var updated = layout
+        if customGridEnabled {
+            guard rootDisplayPages.indices.contains(page), let anchor = rootDisplayPages[page].last(where: { !selectedItemIDs.contains($0.id) }) else { endDrag(); return }
+            for id in ids { _ = updated.remove("app:" + id) }
+            for p in updated.pages.indices {
+                if let slot = updated.pages[p].firstIndex(where: { $0.id == anchor.id }) { updated.pages[p].insert(contentsOf: ids.map { .app($0) }, at: slot + 1); break }
+            }
+        } else {
+            guard page <= updated.pages.count else { return }
+            for id in ids { _ = updated.remove("app:" + id) }
+            if page == updated.pages.count { updated.pages.append([]) }
+            let slot = min(updated.pages[page].count, max(0, LauncherLayout.pageSize - ids.count))
+            updated.pages[page].insert(contentsOf: ids.map { .app($0) }, at: slot)
+        }
+        if commitReconciled(updated) { selectedItemIDs = []; goToPage(min(page, pageCount - 1)) }; endDrag()
+    }
+    func pageTitle(_ index: Int) -> String { LocalizedMessage("第 \(index + 1) 页").localized(language: preferences.language) }
+    var canReorderPages: Bool { canOrganize && openFolderID == nil && !customGridEnabled }
+    func movePage(identifiedBy ids: [String], to target: Int) {
+        guard canReorderPages, !ids.isEmpty, layout.pages.indices.contains(target),
+              let source = layout.pages.firstIndex(where: { $0.map(\.id) == ids }), source != target else { return }
+        var updated = layout
+        let page = updated.pages.remove(at: source); updated.pages.insert(page, at: target)
+        if commit(updated) { pageIndex = target; selectedIndex = 0 }
     }
 }

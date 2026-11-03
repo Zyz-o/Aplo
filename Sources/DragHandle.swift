@@ -51,7 +51,7 @@ struct NativeDragHandle: NSViewRepresentable {
     func makeNSView(context: Context) -> DragSourceView { DragSourceView() }
     func updateNSView(_ view: DragSourceView, context: Context) {
         view.model = model
-        view.iconSize = min(model.preferences.iconPoints(fullscreen: model.isFullscreen), max(24, LauncherGeometry.tileWidth(displayWidth: model.displayWidth, fullscreen: model.isFullscreen) - 18))
+        view.iconSize = min(model.preferences.iconPoints(fullscreen: model.isFullscreen), max(24, model.tileWidth - 18))
         view.itemID = item.id
         view.click = click
         view.resolveIconResources = { [weak model] in
@@ -97,15 +97,22 @@ final class DragSourceView: NSView, NSDraggingSource {
         // Read the latest asynchronous result at drag start; the hit-test overlay
         // may still hold a placeholder from its previous SwiftUI update.
         refreshIconResources()
-        let pasteboard = NSPasteboardItem()
-        pasteboard.setString(itemID, forType: NSPasteboard.PasteboardType(launcherDragType.identifier))
-        let draggingItem = NSDraggingItem(pasteboardWriter: pasteboard)
-        let frame = NSRect(x: point.x - iconSize / 2, y: point.y - iconSize / 2, width: iconSize, height: iconSize)
-        // Build the folder drag thumbnail once per session, never for each pointer sample.
-        let dragImage = icon ?? Self.folderThumbnail(folderImages)
-        draggingItem.setDraggingFrame(frame, contents: dragImage)
-        beginDraggingSession(with: [draggingItem], event: event, source: self)
+        let items = model.dragItems(startingAt: itemID)
+        let draggingItems = items.enumerated().map { index, item -> NSDraggingItem in
+            let pasteboard = NSPasteboardItem()
+            pasteboard.setString(item.id, forType: NSPasteboard.PasteboardType(launcherDragType.identifier))
+            let app = item.appID.flatMap { model.app(for: $0) }
+            if let app { pasteboard.setString(app.url.absoluteString, forType: .fileURL) }
+            let draggingItem = NSDraggingItem(pasteboardWriter: pasteboard)
+            let offset = CGFloat(min(index, 4)) * 5
+            let frame = NSRect(x: point.x - iconSize / 2 + offset, y: point.y - iconSize / 2 - offset, width: iconSize, height: iconSize)
+            draggingItem.setDraggingFrame(frame, contents: app.map { model.icon(for: $0) } ?? icon ?? Self.folderThumbnail(folderImages))
+            return draggingItem
+        }
+        guard !draggingItems.isEmpty else { model.endDrag(); return }
+        beginDraggingSession(with: draggingItems, event: event, source: self)
     }
+
     private static func folderThumbnail(_ images: [NSImage]) -> NSImage {
         NSImage(size: NSSize(width: 384, height: 384), flipped: false) { rect in
             NSColor(white: 0.72, alpha: 0.35).setFill()
@@ -124,7 +131,9 @@ final class DragSourceView: NSView, NSDraggingSource {
         start = nil
     }
     func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
-        context == .withinApplication ? .move : []
+        if context == .withinApplication { return .move }
+        guard let model, model.dragItems(startingAt: itemID).allSatisfy({ $0.kind == .app }) else { return [] }
+        return .copy
     }
     func ignoreModifierKeys(for session: NSDraggingSession) -> Bool { true }
     func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {

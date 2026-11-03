@@ -2,13 +2,6 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-extension Color {
-    static let launcherAccent = Color(nsColor: NSColor(name: nil) { appearance in
-        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            ? NSColor(srgbRed: 0.39, green: 0.83, blue: 0.75, alpha: 1)
-            : NSColor(srgbRed: 0.08, green: 0.43, blue: 0.40, alpha: 1)
-    })
-}
 extension LauncherModel {
     var accentColor: Color {
         let mode = preferences.colorVision
@@ -24,10 +17,6 @@ extension LauncherModel {
     }
 }
 
-@MainActor private enum LauncherBrand {
-    static let image = Bundle.main.url(forResource: "AppIcon", withExtension: "icns")
-        .flatMap { NSImage(contentsOf: $0) } ?? NSImage(systemSymbolName: "square.grid.2x2.fill", accessibilityDescription: nil)!
-}
 let launcherDragType = UTType(exportedAs: "local.jianqi.layout-item")
 
 struct LauncherView: View {
@@ -61,11 +50,11 @@ struct LauncherView: View {
             }.opacity(reduceTransparency ? 1 : 1 - model.preferences.backgroundTransparency)
         }
         .background { MagnificationSurface(enabled: model.preferences.magnificationEnabled && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion) }
-        .clipShape(RoundedRectangle(cornerRadius: model.isFullscreen ? 0 : 22, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: model.isFullscreen ? 0 : 22, style: .continuous).strokeBorder(.primary.opacity(0.10)))
+        .clipShape(RoundedRectangle(cornerRadius: model.isFullscreen ? 0 : LauncherGeometry.compactCornerRadius, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: model.isFullscreen ? 0 : LauncherGeometry.compactCornerRadius, style: .continuous).strokeBorder(.primary.opacity(0.10)))
         .overlay(alignment: .bottomTrailing) {
             if !model.isFullscreen {
-                WindowResizeHandle().frame(width: 30, height: 30)
+                WindowResizeHandle().frame(width: LauncherGeometry.resizeHandleSize, height: LauncherGeometry.resizeHandleSize)
                     .background {
                         Image(systemName: "arrow.up.left.and.arrow.down.right")
                             .font(.system(size: 10)).foregroundStyle(.white)
@@ -75,6 +64,7 @@ struct LauncherView: View {
                     .padding(3).help(model.text("拖动右下角调整窗口大小"))
             }
         }
+        .sheet(isPresented: $model.showingPageOrganizer) { PageOrganizer(model: model) }
         .sheet(item: $model.inspectingApp) { app in ApplicationInspector(model: model, app: app) }
         .tint(model.accentColor)
         .environment(\.locale, Locale(identifier: model.preferences.language.localeIdentifier))
@@ -86,14 +76,10 @@ struct LauncherView: View {
             if model.preferences.toolbarPosition == .top { toolbar.padding(.bottom, 12) }
             MessageBanner(model: model)
             if let result = model.inlineResult { InlineResultView(model: model, result: result) }
+            if model.isSearching && model.inlineResult == nil { SearchCategoryBar(model: model).padding(.bottom, 12) }
             if model.usesFreePlacement { freeContent }
             else if model.visibleItems.isEmpty {
-                VStack(spacing: 8) {
-                    if model.initialDiscoveryPending { ProgressView().controlSize(.small) }
-                    else { Image(systemName: "magnifyingglass").font(.system(size: model.preferences.textPoints(28), weight: .light)).foregroundStyle(.tertiary) }
-                    Text(model.text(model.initialDiscoveryPending ? "正在查找应用…" : model.inlineResult != nil ? "结果显示在上方" : model.isSearching ? "没有匹配的应用" : "没有找到已安装的应用"))
-                        .font(.system(size: model.preferences.textPoints(13))).foregroundStyle(.secondary)
-                }.frame(maxWidth: .infinity, maxHeight: .infinity)
+                LauncherEmptyState(model: model)
             } else if model.isContinuousScrolling {
                 continuousContent
             } else {
@@ -124,11 +110,28 @@ struct LauncherView: View {
                         }
                         Button(model.text("随机打乱")) { model.shuffleLayout() }
                         Divider()
+                        Button(model.text(model.multiSelectionActive ? "结束多选" : "多选应用")) { model.toggleMultiSelection() }.disabled(model.isSearching || model.importInProgress)
+                        Button(model.text("页面顺序…")) { model.editing = true; model.showingPageOrganizer = true }
+                            .disabled(model.preferences.automaticCategories || model.openFolderID != nil || model.customGridEnabled)
+                        Divider()
                         Button(model.text(model.editing ? "完成整理" : "手动整理")) { model.toggleEditing() }
                     } label: {
                         Label(model.text("整理"), systemImage: "square.grid.2x2")
                             .font(.system(size: model.preferences.textPoints(12)))
                     }.menuStyle(.borderlessButton).fixedSize().accessibilityLabel(model.text("整理应用"))
+                    if model.multiSelectionActive {
+                        Text("\(model.selectedItemIDs.count)").monospacedDigit()
+                        Menu {
+                            Button(model.text("合并所选应用")) { model.createFolderFromSelection() }.disabled(model.selectedAppIDs.count < 2 || model.openFolderID != nil)
+                            ForEach(model.layout.folders.filter { $0.id != model.openFolderID }) { folder in
+                                Button(model.name(for: folder)) { model.moveSelection(toFolder: folder.id) }
+                            }
+                            if model.openFolderID != nil { Button(model.text("移出文件夹")) { model.moveSelection(toFolder: nil) } }
+                        } label: { Image(systemName: "square.on.square") }
+                        .menuStyle(.borderlessButton).fixedSize().accessibilityLabel(model.text("批量移动或合并"))
+                        .disabled(model.selectedItemIDs.isEmpty)
+                        .help(model.text("批量移动或合并"))
+                    }
                     if model.editing {
                         Button(model.text("完成")) { model.toggleEditing() }.buttonStyle(.plain)
                     }
@@ -161,16 +164,16 @@ struct LauncherView: View {
                 }.buttonStyle(.plain)
                     .help(model.text("设置与备份"))
                     .accessibilityLabel(model.text("设置与备份"))
-            }.frame(maxWidth: model.gridWidth).frame(height: 40)
+            }.frame(maxWidth: model.gridWidth).frame(height: LauncherGeometry.toolbarHeight)
 
     }
 
     private var freeContent: some View {
         GeometryReader { viewport in
-            let vertical = model.preferences.pagingDirection == .vertical
-            let tileWidth = LauncherGeometry.tileWidth(displayWidth: model.displayWidth, fullscreen: model.isFullscreen)
-            let tileHeight = model.preferences.iconPoints(fullscreen: model.isFullscreen) + model.preferences.labelHeight + 18
-            let rows = max(1, min(model.isFullscreen ? 100 : 3, Int(viewport.size.height / (tileHeight + LauncherGeometry.gridSpacing))))
+            let vertical = model.navigationDirection == .vertical
+            let tileWidth = model.tileWidth
+            let tileHeight = model.displayedIconSize + model.preferences.labelHeight + 18
+            let rows = model.fittedRows(height: viewport.size.height, tileHeight: tileHeight)
             let count = model.containerItems.count
             let canvas = CGSize(width: vertical ? model.gridWidth : max(viewport.size.width, CGFloat((count + rows - 1) / rows) * (tileWidth + LauncherGeometry.gridSpacing)),
                                 height: vertical ? max(viewport.size.height, CGFloat((count + model.columnCount - 1) / model.columnCount) * (tileHeight + LauncherGeometry.gridSpacing)) : viewport.size.height)
@@ -189,7 +192,7 @@ struct LauncherView: View {
                     save: { id, point in model.setFreePosition(id, x: point.x, y: point.y) }) { entry in tile(entry.item, index: entry.index) }
                     .allowsHitTesting(!model.importInProgress)
             }.coordinateSpace(name: "free-viewport")
-            .id("free-\(model.isFullscreen)-\(model.openFolderID ?? "root")-\(model.preferences.pagingDirection)")
+            .id("free-\(model.isFullscreen)-\(model.openFolderID ?? "root")-\(model.navigationDirection)")
             .onAppear { model.horizontalRowCount = rows; model.updateFreeFrames(Dictionary(uniqueKeysWithValues: entries.map { ($0.id, CGRect(origin: $0.origin, size: tileSize)) })) }
             .onChange(of: entries) { entries in model.updateFreeFrames(Dictionary(uniqueKeysWithValues: entries.map { ($0.id, CGRect(origin: $0.origin, size: tileSize)) })) }
             .onChange(of: rows) { model.horizontalRowCount = $0 }
@@ -199,9 +202,9 @@ struct LauncherView: View {
     private var continuousContent: some View {
         GeometryReader { geometry in
             ScrollViewReader { proxy in
-                let vertical = model.preferences.pagingDirection == .vertical
-                let tileHeight = model.preferences.iconPoints(fullscreen: model.isFullscreen) + model.preferences.labelHeight + 18
-                let rows = max(1, min(model.isFullscreen ? 100 : 3, Int((geometry.size.height + 2) / (tileHeight + LauncherGeometry.gridSpacing))))
+                let vertical = model.navigationDirection == .vertical
+                let tileHeight = model.displayedIconSize + model.preferences.labelHeight + 18
+                let rows = model.fittedRows(height: geometry.size.height, tileHeight: tileHeight)
                 ScrollView(vertical ? .vertical : .horizontal) {
                     if vertical {
                         LazyVGrid(columns: columns, spacing: LauncherGeometry.gridSpacing) {
@@ -222,7 +225,7 @@ struct LauncherView: View {
                 .onChange(of: model.query) { _ in
                     if let first = model.containerItems.first { proxy.scrollTo(first.id, anchor: .topLeading) }
                 }
-                .id("\(model.isFullscreen)-\(model.preferences.pagingDirection)-\(model.openFolderID ?? "continuous-root")")
+                .id("\(model.isFullscreen)-\(model.navigationDirection)-\(model.openFolderID ?? "continuous-root")")
             }
         }
     }
@@ -233,10 +236,10 @@ struct LauncherView: View {
                 if model.containerItems.indices.contains(index) {
                     let item = model.containerItems[index]
                     tile(item, index: index)
-                        .frame(width: LauncherGeometry.tileWidth(displayWidth: model.displayWidth, fullscreen: model.isFullscreen), height: tileHeight)
+                        .frame(width: model.tileWidth, height: tileHeight)
                         .id(item.id)
                 } else {
-                    Color.clear.frame(width: LauncherGeometry.tileWidth(displayWidth: model.displayWidth, fullscreen: model.isFullscreen), height: tileHeight)
+                    Color.clear.frame(width: model.tileWidth, height: tileHeight)
                         .accessibilityHidden(true)
                 }
             }
@@ -247,7 +250,7 @@ struct LauncherView: View {
     private func pageFrames(size: CGSize) -> some View {
         ForEach((model.pageIndex - 1)...(model.pageIndex + 1), id: \.self) { page in
             let origin = PageMotion.origin(relativePage: page - model.pageIndex, size: size,
-                                           vertical: model.preferences.pagingDirection == .vertical)
+                                           vertical: model.navigationDirection == .vertical)
             pageContent(page)
                 .frame(width: size.width, height: size.height)
                 .offset(x: origin.x, y: origin.y)
@@ -283,13 +286,13 @@ struct LauncherView: View {
                     .padding(.horizontal, clearBackdrop ? 7 : 0)
                     .foregroundStyle(clearBackdrop ? Color.white : Color.primary)
 
-                Text(model.text(model.isContinuousScrolling ? "\(model.visibleApplicationCount) 个应用 · 连续滚动" : "\(model.visibleApplicationCount) 个应用 · \(model.browsingLayout.pages.count) 页"))
+                Text(model.text(model.isContinuousScrolling ? "\(model.visibleApplicationCount) 个应用 · 连续滚动" : "\(model.visibleApplicationCount) 个应用 · \(model.pageCount) 页"))
                     .font(.system(size: model.preferences.textPoints(11))).foregroundStyle(.secondary)
             }.allowsHitTesting(false)
             HStack(alignment: .top) {
                 if let folder = model.openFolder, !model.isSearching {
                     HStack(spacing: 8) {
-                        Button { model.closeFolder() } label: { Image(systemName: "chevron.left").frame(width: 28, height: 32) }
+                        Button { model.closeFolder() } label: { Image(systemName: "chevron.left").frame(width: 28, height: LauncherGeometry.smallControlHeight) }
                             .buttonStyle(.plain).accessibilityLabel(model.text("返回全部应用"))
                         if model.renamingFolderID != nil {
                             NativeInput(text: $model.folderNameDraft, placeholder: "文件夹名称", focusGeneration: 0,
@@ -342,6 +345,7 @@ struct LauncherView: View {
 
     @ViewBuilder private func tile(_ item: LayoutItem, index: Int) -> some View {
         LauncherTile(model: model, item: item, index: index, selected: model.selectedIndex == index) {
+            if model.multiSelectionActive && item.kind == .app { model.toggleItemSelection(item); return }
             model.select(index)
             if item.kind == .folder { model.open(item) }
             else if !model.editing, let id = item.appID, let app = model.app(for: id) { launch(app) }
@@ -350,13 +354,20 @@ struct LauncherView: View {
         .overlay {
             if model.canBeginIconDrag {
                 NativeDragHandle(model: model, item: item) {
+                    if model.multiSelectionActive && item.kind == .app { model.toggleItemSelection(item); return }
                     model.select(index)
                     if item.kind == .folder { model.open(item) }
                     else if !model.editing, let id = item.appID, let app = model.app(for: id) { launch(app) }
                 }
             }
         }
-        .onDrop(of: [launcherDragType], delegate: TileDropDelegate(model: model, target: item, width: LauncherGeometry.tileWidth(displayWidth: model.displayWidth, fullscreen: model.isFullscreen)))
+        .overlay(alignment: .topTrailing) {
+            if model.multiSelectionActive, model.selectedItemIDs.contains(item.id) {
+                Image(systemName: "checkmark.circle.fill").foregroundStyle(.white, model.accentColor)
+                    .padding(4).allowsHitTesting(false)
+            }
+        }
+        .onDrop(of: [launcherDragType], delegate: TileDropDelegate(model: model, target: item, width: model.tileWidth))
         .contextMenu {
             if model.preferences.automaticCategories {
                 if let appID = item.appID, let app = model.app(for: appID) {
@@ -409,14 +420,14 @@ struct LauncherView: View {
 
     private var pagination: some View {
         HStack(spacing: 10) {
-            Button { model.changePage(by: -1) } label: { Image(systemName: model.preferences.pagingDirection == .vertical ? "chevron.up" : "chevron.left").frame(width: 20, height: 22) }
+            Button { model.changePage(by: -1) } label: { Image(systemName: model.navigationDirection == .vertical ? "chevron.up" : "chevron.left").frame(width: 20, height: 22) }
                 .buttonStyle(.plain).disabled(model.pageIndex == 0).accessibilityLabel(model.text("上一页"))
             if model.pageCount > 0 {
                 ForEach(visiblePageRange, id: \.self) { page in
                     Button { model.requestPage(page) } label: {
                         Capsule().fill(page == model.pageIndex ? model.accentColor : Color.primary.opacity(0.20))
                             .frame(width: page == model.pageIndex ? 14 : 6, height: 6).frame(width: 28, height: 24).contentShape(Rectangle())
-                    }.buttonStyle(.plain).accessibilityLabel(model.text("第 \(page + 1) 页"))
+                    }.buttonStyle(.plain).accessibilityLabel(model.pageTitle(page))
                         .accessibilityAddTraits(page == model.pageIndex ? .isSelected : [])
                         .overlay { if model.canOrganize { NativePageDropTarget(model: model, page: page) } }
                 }
@@ -424,19 +435,19 @@ struct LauncherView: View {
             if model.pageCount > 7 {
                 Text("\(model.pageIndex + 1)/\(model.pageCount)").font(.system(size: model.preferences.textPoints(10), design: .monospaced)).foregroundStyle(.secondary)
             }
-            Button { model.changePage(by: 1) } label: { Image(systemName: model.preferences.pagingDirection == .vertical ? "chevron.down" : "chevron.right").frame(width: 20, height: 22) }
+            Button { model.changePage(by: 1) } label: { Image(systemName: model.navigationDirection == .vertical ? "chevron.down" : "chevron.right").frame(width: 20, height: 22) }
                 .buttonStyle(.plain).disabled(model.pageIndex == model.pageCount - 1).accessibilityLabel(model.text("下一页"))
             if model.canOrganize {
-                if model.openFolderID == nil {
+                if model.openFolderID == nil && !model.customGridEnabled {
                     Text(model.text("新一页")).font(.system(size: model.preferences.textPoints(10))).foregroundStyle(.secondary)
                         .padding(.horizontal, 7).padding(.vertical, 4)
                         .background(.primary.opacity(0.05), in: Capsule())
                         .overlay { NativePageDropTarget(model: model, page: model.browsingLayout.pages.count) }
-                } else {
+                } else if model.openFolderID != nil {
                     Text(model.text("拖到此处移出文件夹")).font(.system(size: model.preferences.textPoints(10))).foregroundStyle(.secondary)
                         .padding(.horizontal, 7).padding(.vertical, 4)
                         .background(.primary.opacity(0.05), in: Capsule())
-                        .overlay { NativePageDropTarget(model: model, page: model.browsingLayout.pages.count - 1) }
+                        .overlay { NativePageDropTarget(model: model, page: model.rootDisplayPages.count - 1) }
                 }
             }
         }.foregroundStyle(.secondary).frame(maxWidth: .infinity).frame(height: 24)
@@ -480,7 +491,7 @@ struct LauncherTile: View, Equatable {
         self.editing = model.editing; self.draggingID = model.draggingID
         self.freePlacement = model.usesFreePlacement; self.continuous = model.isContinuousScrolling
         let p = model.preferences
-        self.appearance = TileAppearanceKey(iconSize: min(p.iconPoints(fullscreen: model.isFullscreen), max(24, LauncherGeometry.tileWidth(displayWidth: model.displayWidth, fullscreen: model.isFullscreen) - 18)), labelHeight: p.labelHeight, textScale: p.textScalePercent, showNames: p.showNames, font: p.labelFontFamily, weight: p.labelWeight, color: p.labelColor, colorHex: p.labelColorHex, transparentLabels: p.backgroundTransparency > 0.7, vision: p.colorVision, magnify: p.magnificationEnabled, animate: p.animationsEnabled)
+        self.appearance = TileAppearanceKey(iconSize: min(p.iconPoints(fullscreen: model.isFullscreen), max(24, model.tileWidth - 18)), labelHeight: p.labelHeight, textScale: p.textScalePercent, showNames: p.showNames, font: p.labelFontFamily, weight: p.labelWeight, color: p.labelColor, colorHex: p.labelColorHex, transparentLabels: p.backgroundTransparency > 0.7, vision: p.colorVision, magnify: p.magnificationEnabled, animate: p.animationsEnabled)
         self.dragFeedback = model.dragFeedback(for: item.id)
     }
     nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
@@ -516,7 +527,8 @@ struct LauncherTile: View, Equatable {
         Button(action: action) {
             VStack(spacing: 4) {
                 DockMagnifiedIcon(identity: iconIdentity, image: nativeIcon, enabled: model.preferences.magnificationEnabled && !model.editing && model.draggingID == nil && !reduceMotion,
-                                  animated: model.preferences.animationsEnabled && !reduceMotion) {
+                                  animated: model.preferences.animationsEnabled && !reduceMotion,
+                                  wiggling: editing && draggingID == nil && model.preferences.animationsEnabled && !reduceMotion) {
                 Group {
                 if item.kind == .folder || previewChildren != nil {
                     ZStack {
@@ -617,7 +629,9 @@ private struct TileDropDelegate: DropDelegate {
 
 struct MessageBanner: View {
     @ObservedObject var model: LauncherModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
+      Group {
         if let message = model.message {
             HStack(spacing: 5) {
                 if model.importInProgress { ProgressView().controlSize(.small) }
@@ -631,7 +645,10 @@ struct MessageBanner: View {
             }.font(.system(size: model.preferences.textPoints(11))).foregroundStyle(.primary)
                 .padding(9).background(model.accentColor.opacity(0.09), in: RoundedRectangle(cornerRadius: 10))
                 .padding(.bottom, 6)
+                .transition(reduceMotion ? .opacity : .move(edge: .top).combined(with: .opacity))
         }
+      }.animation(model.preferences.animationsEnabled && !reduceMotion ? .easeInOut(duration: LauncherGeometry.messageTransitionDuration) : nil, value: model.message)
+
     }
 }
 

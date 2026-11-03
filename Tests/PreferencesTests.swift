@@ -112,7 +112,7 @@ import CoreGraphics
         expect(migrated.brandIconPercent == 100 && migrated.brandNamePercent == 100, "existing preferences receive independent header size defaults")
         var header = migrated; header.brandIconPercent = 125; header.brandNamePercent = 150
         store.save(header)
-        expect(store.load().brandIconPoints == 55 && store.load().brandNamePoints == 30, "header icon and name percentages persist independently")
+        expect(store.load().brandIconPercent == 125 && store.load().brandNamePoints == 30, "legacy header icon percentage remains readable while the visible name size persists")
         expect(store.load().iconScalePercent == migrated.iconScalePercent && store.load().textScalePercent == migrated.textScalePercent, "header scaling does not change the application grid scales")
         let positions = CompactWindowPlacementStore(defaults: other)
         let visible = CGRect(x: -1800, y: 38, width: 1800, height: 1000)

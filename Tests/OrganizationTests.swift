@@ -153,5 +153,95 @@ import XCTest
         XCTAssertEqual(notes.count, 2)
         XCTAssertTrue(notes.first?.body.contains("Current fixes") == true)
     }
+    func testCustomGridReflowsWithoutRewritingStoredLayouts() throws {
+        let (model, _, cleanup) = try fixture(); defer { cleanup() }
+        let original = model.layout
+        model.updatePreferences { $0.compactGridColumns = 4; $0.compactGridRows = 2; $0.navigationStyle = .paged }
+        XCTAssertEqual(model.rootDisplayPages.map(\.count), [8,8,8,8,8])
+        XCTAssertEqual(model.layout, original)
+        model.goToPage(4); model.updatePreferences { $0.compactGridColumns = 12 }
+        XCTAssertLessThan(model.pageIndex, model.pageCount)
+        model.updatePreferences { $0.compactGridColumns = 0; $0.compactGridRows = 0 }
+        XCTAssertEqual(model.rootDisplayPages, original.pages)
+        XCTAssertEqual(model.layout, original)
+    }
+    func testBatchFolderPreservesAnchorAndUndoBothLayouts() throws {
+        let (model, _, cleanup) = try fixture(); defer { cleanup() }
+        let original = model.layout
+        model.toggleMultiSelection()
+        model.toggleItemSelection(.app("test.37")); model.toggleItemSelection(.app("test.39"))
+        model.createFolderFromSelection()
+        let folder = try XCTUnwrap(model.layout.folders.first)
+        XCTAssertEqual(model.layout.pages[2][1].id, folder.id)
+        XCTAssertEqual(folder.children, ["test.37", "test.39"])
+        XCTAssertEqual(model.layout.otherDisplayLayout, original.otherDisplayLayout)
+        XCTAssertEqual(model.layout.appIDs.sorted(), original.appIDs.sorted())
+        model.finishRename(cancel: true); model.closeFolder(); model.undoOrganization()
+        XCTAssertEqual(model.layout, original)
+        model.redoOrganization(); XCTAssertEqual(model.layout.pages[2][1].id, folder.id)
+    }
+    func testBatchDropAndPageMoveAreSingleUndoTransactions() throws {
+        let (model, _, cleanup) = try fixture(); defer { cleanup() }
+        model.toggleMultiSelection()
+        model.toggleItemSelection(.app("test.36")); model.toggleItemSelection(.app("test.39"))
+        let before = model.layout
+        model.beginInteractiveDrag("app:test.39")
+        XCTAssertEqual(model.dragItems(startingAt: "app:test.39").count, 2)
+        model.drop("app:test.39", onto: "app:test.37", position: .center)
+        XCTAssertEqual(model.layout.folders.first?.children, ["test.37", "test.36", "test.39"])
+        model.undoOrganization(); XCTAssertEqual(model.layout, before)
+        model.editing = true
+        let ids = model.layout.pages[2].map(\.id)
+        model.movePage(identifiedBy: ids, to: 0)
+        XCTAssertEqual(model.layout.pages[0].map(\.id), ids)
+        XCTAssertEqual(model.layout.otherDisplayLayout, before.otherDisplayLayout)
+        model.undoOrganization(); XCTAssertEqual(model.layout, before)
+        model.movePage(identifiedBy: ["invalid"], to: 0)
+        XCTAssertEqual(model.layout, before)
+    }
+    func testFolderNavigationDoesNotChangeRootPreferencesOrLayout() throws {
+        let (model, _, cleanup) = try fixture(); defer { cleanup() }
+        model.createFolder(containing: "test.39"); model.finishRename(cancel: true)
+        let original = model.layout
+        model.updatePreferences { $0.navigationStyle = .paged; $0.pagingDirection = .horizontal; $0.folderNavigation = "continuous" }
+        XCTAssertTrue(model.isContinuousScrolling); XCTAssertEqual(model.navigationDirection, .vertical)
+        model.closeFolder()
+        XCTAssertFalse(model.isContinuousScrolling); XCTAssertEqual(model.navigationDirection, .horizontal)
+        XCTAssertEqual(model.layout, original)
+    }
+    func testSearchCategoryAndHiddenCacheInvalidation() throws {
+        let (model, _, cleanup) = try fixture(); defer { cleanup() }
+        _ = model.browsingLayout
+        model.setAppHidden("test.00", hidden: true)
+        XCTAssertFalse(model.browsingLayout.appIDs.contains("test.00"))
+        model.query = "App"
+        let category = try XCTUnwrap(model.availableSearchCategories.first)
+        model.selectSearchCategory(category)
+        XCTAssertEqual(model.results.count, model.count(for: category))
+        XCTAssertFalse(model.results.contains { $0.id == "test.00" })
+        model.query = ""; XCTAssertNil(model.searchCategory)
+        model.setAppHidden("test.00", hidden: false)
+        XCTAssertTrue(model.browsingLayout.appIDs.contains("test.00"))
+    }
+
+    func testBatchMoveIntoFolderAndPageKeepsAllAppsAndIsUndoable() throws {
+        let (model, _, cleanup) = try fixture(); defer { cleanup() }
+        model.createFolder(containing: "test.00"); model.finishRename(cancel: true); model.closeFolder()
+        let folderID = try XCTUnwrap(model.layout.folders.first?.id)
+        let before = model.layout
+        model.toggleMultiSelection()
+        model.toggleItemSelection(.app("test.37")); model.toggleItemSelection(.app("test.39"))
+        model.moveSelection(toFolder: folderID)
+        XCTAssertEqual(model.layout.folders.first?.children, ["test.00", "test.37", "test.39"])
+        XCTAssertEqual(model.layout.appIDs.sorted(), before.appIDs.sorted())
+        model.undoOrganization(); XCTAssertEqual(model.layout, before)
+        if !model.multiSelectionActive { model.toggleMultiSelection() }
+        model.toggleItemSelection(.app("test.37")); model.toggleItemSelection(.app("test.39"))
+        model.moveSelection(toPage: 0)
+        XCTAssertEqual(model.layout.appIDs.sorted(), before.appIDs.sorted())
+        XCTAssertTrue(model.layout.pages[0].contains(.app("test.37")))
+        model.undoOrganization(); XCTAssertEqual(model.layout, before)
+    }
+
 }
 #endif

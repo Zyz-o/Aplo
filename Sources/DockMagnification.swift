@@ -86,10 +86,27 @@ import QuartzCore
         }
     }
 
+    func sourceFrame(appID: String, in window: NSWindow) -> CGRect? {
+        guard let content = window.contentView else { return nil }
+        return entries.values.compactMap(\.view).first {
+            $0.applicationID == appID && $0.window === window && !$0.visibleRect.isEmpty
+        }.map { $0.convert($0.bounds, to: content) }
+    }
     func reset() { pendingWindow = nil; for entry in entries.values { entry.view?.setScale(1) } }
 }
 
 class MagnificationIconView: NSView {
+    var applicationID: String?
+    func setWiggling(_ value: Bool) {
+        guard let layer else { return }
+        if !value { layer.removeAnimation(forKey: "aplo.editWiggle"); return }
+        guard layer.animation(forKey: "aplo.editWiggle") == nil else { return }
+        let animation = CAKeyframeAnimation(keyPath: "transform.rotation.z")
+        animation.values = [-0.018, 0.018, -0.018]
+        animation.duration = 0.30; animation.repeatCount = .infinity
+        animation.beginTime = CACurrentMediaTime() + Double(abs(ObjectIdentifier(self).hashValue % 9)) * 0.012
+        layer.add(animation, forKey: "aplo.editWiggle")
+    }
     var enabled = true { didSet { if !enabled { setScale(1) } } }
     var animated = true
     private var scale: CGFloat = 1
@@ -162,6 +179,7 @@ struct DockMagnifiedIcon<Content: View>: NSViewRepresentable {
     let image: NSImage?
     let enabled: Bool
     let animated: Bool
+    var wiggling = false
     @ViewBuilder let content: () -> Content
     func makeNSView(context: Context) -> MagnificationHost<Content> {
         let view = MagnificationHost<Content>()
@@ -174,7 +192,8 @@ struct DockMagnifiedIcon<Content: View>: NSViewRepresentable {
             view.updateContent(image: image, content: content)
             view.identity = identity
         }
-        view.enabled = enabled; view.animated = animated
+        view.applicationID = identity.item.appID
+        view.enabled = enabled; view.animated = animated; view.setWiggling(wiggling)
     }
 }
 struct MagnificationSurface: NSViewRepresentable {
