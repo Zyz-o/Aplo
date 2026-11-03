@@ -77,6 +77,7 @@ struct LauncherView: View {
             MessageBanner(model: model)
             if let result = model.inlineResult { InlineResultView(model: model, result: result) }
             if model.isSearching && model.inlineResult == nil { SearchCategoryBar(model: model).padding(.bottom, 12) }
+            frequentRow
             if model.usesFreePlacement { freeContent }
             else if model.visibleItems.isEmpty {
                 LauncherEmptyState(model: model)
@@ -226,51 +227,33 @@ struct LauncherView: View {
         }
     }
 
-    private func verticalGroups() -> (ordinary: [(offset: Int, element: LayoutItem)], system: [(offset: Int, element: LayoutItem)]) {
-        let items = Array(model.containerItems.enumerated())
-        let root = model.openFolderID == nil && !model.isSearching
-        let split = root && model.preferences.systemAppsLast
-        let system = split ? items.filter { model.isSystemItem($0.element) } : []
-        let ordinary = split ? items.filter { !model.isSystemItem($0.element) } : items
-        return (ordinary, system)
-    }
-
     private func verticalRowAnchor(for index: Int) -> String {
-        let groups = verticalGroups()
-        for entries in [groups.ordinary, groups.system] {
-            if let position = entries.firstIndex(where: { $0.offset == index }) {
-                return "row:" + entries[position / model.columnCount * model.columnCount].element.id
-            }
-        }
-        return ""
+        let items = model.containerItems
+        guard items.indices.contains(index) else { return "" }
+        return "row:" + items[index / model.columnCount * model.columnCount].id
     }
 
     private func verticalSections(tileHeight: CGFloat) -> some View {
-        let (ordinary, system) = verticalGroups()
-        let recent = model.openFolderID == nil && !model.isSearching && !model.editing ? model.recentApplications : []
-        return LazyVStack(alignment: .leading, spacing: LauncherGeometry.gridSpacing) {
-            if !recent.isEmpty {
-                sectionTitle("最近使用")
-                HStack(spacing: LauncherGeometry.gridSpacing) {
-                    ForEach(recent, id: \.id) { app in
-                        LauncherTile(model: model, item: .app(app.id), index: -1, selected: false) { launch(app) }
-                            .equatable().frame(width: model.tileWidth, height: tileHeight)
-                    }
-                }
-                Divider()
-            }
-            verticalRows(ordinary, tileHeight: tileHeight)
-            if !system.isEmpty {
-                Divider()
-                sectionTitle("系统应用")
-                verticalRows(system, tileHeight: tileHeight)
-            }
+        LazyVStack(alignment: .leading, spacing: LauncherGeometry.gridSpacing) {
+            verticalRows(Array(model.containerItems.enumerated()), tileHeight: tileHeight)
         }.frame(width: model.gridWidth).frame(maxWidth: .infinity).padding(.vertical, 4)
     }
 
-    private func sectionTitle(_ title: String) -> some View {
-        Text(model.text(title)).font(.system(size: model.preferences.textPoints(13), weight: .semibold))
-            .accessibilityAddTraits(.isHeader).padding(.vertical, 4)
+    @ViewBuilder private var frequentRow: some View {
+        if model.openFolderID == nil && !model.isSearching && !model.editing {
+            let recent = model.recentApplications
+            if !recent.isEmpty {
+                VStack(spacing: 8) {
+                    HStack(spacing: LauncherGeometry.gridSpacing) {
+                        ForEach(recent, id: \.id) { app in
+                            LauncherTile(model: model, item: .app(app.id), index: -1, selected: false) { launch(app) }
+                                .equatable().frame(width: model.tileWidth)
+                        }
+                    }.frame(maxWidth: .infinity, alignment: .leading).accessibilityElement(children: .contain).accessibilityLabel(model.text("最近使用"))
+                    Divider()
+                }.frame(width: model.gridWidth).frame(maxWidth: .infinity).padding(.bottom, 8)
+            }
+        }
     }
 
     private func verticalRows(_ entries: [(offset: Int, element: LayoutItem)], tileHeight: CGFloat) -> some View {
@@ -278,7 +261,7 @@ struct LauncherView: View {
             HStack(spacing: LauncherGeometry.gridSpacing) {
                 ForEach(entries[start..<min(entries.count, start + model.columnCount)], id: \.element.id) { entry in
                     tile(entry.element, index: entry.offset)
-                        .frame(width: model.tileWidth, height: tileHeight).id(entry.element.id)
+                        .frame(width: model.tileWidth, height: tileHeight)
                 }
             }.frame(height: tileHeight).id("row:" + entries[start].element.id)
         }

@@ -286,10 +286,6 @@ final class LauncherModel: ObservableObject {
         preferencesStore.defaults.set(updated, forKey: "aplo.recentLaunchIDs.v1")
         recentLaunchIDs = updated
     }
-    func isSystemItem(_ item: LayoutItem) -> Bool {
-        if let id = item.appID { return lookup[id]?.isSystemApplication == true }
-        return !item.children.isEmpty && item.children.allSatisfy { lookup[$0]?.isSystemApplication == true }
-    }
     var openFolder: LayoutItem? { browsingLayout.folders.first { $0.id == openFolderID } }
     var containerItems: [LayoutItem] {
         if let cachedContainerItems { return cachedContainerItems }
@@ -297,7 +293,7 @@ final class LauncherModel: ObservableObject {
         if isSearching { items = results.map { .app($0.id) } }
         else {
             let source = openFolder.map { $0.children.map { LayoutItem.app($0) } } ?? browsingLayout.allItems
-            items = isContinuousScrolling && preferences.systemAppsLast ? AppClassifier.systemLast(source, appsByID: lookup) : source
+            items = source
         }
         cachedContainerItems = items
         return items
@@ -345,7 +341,6 @@ final class LauncherModel: ObservableObject {
         let organizationChanged = updated.hiddenAppIDs != preferences.hiddenAppIDs || updated.arrangement != preferences.arrangement || updated.compactArrangement != preferences.compactArrangement || updated.automaticCategories != preferences.automaticCategories
         let previousOrganization = organizationChanged ? organizationState : nil
         let hiddenChanged = updated.hiddenAppIDs != preferences.hiddenAppIDs
-        let orderingChanged = updated.systemAppsLast != preferences.systemAppsLast
         let navigationChanged = PreferenceChanges(from: preferences, to: updated).contains(.navigation)
         let categoryChanged = updated.automaticCategories != preferences.automaticCategories
         let languageChanged = updated.language != preferences.language
@@ -359,7 +354,7 @@ final class LauncherModel: ObservableObject {
                 self?.flushPreferences()
             }
         } else { flushPreferences() }
-        if navigationChanged || orderingChanged { pageIndex = 0; selectedIndex = 0 }
+        if navigationChanged { pageIndex = 0; selectedIndex = 0 }
         if hiddenChanged {
             if openFolderID != nil && openFolder == nil { openFolderID = nil }
             filter()

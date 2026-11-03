@@ -1,3 +1,11 @@
+# 3.15.4 — 2026-11-03
+
+- Group built-in and installed apps by function, pin a recent-app row above the home grid, and resolve drag thumbnails only when dragging starts.
+
+<!-- summary-zh -->
+- 取消系统应用单独分组；主页顶部固定显示最近使用的一排图标。
+- 滚动时不再为拖放层重复准备图标，拖动开始时才读取缩略图。
+
 # 3.15.3 — 2026-11-03
 
 - Restrict system classification to Apple bundles in macOS app locations and categorize Tailscale as networking.

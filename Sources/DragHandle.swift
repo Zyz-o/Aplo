@@ -61,7 +61,6 @@ struct NativeDragHandle: NSViewRepresentable {
             }
             return (nil, item.children.prefix(9).compactMap { model.app(for: $0) }.map { model.icon(for: $0) })
         }
-        view.refreshIconResources()
     }
 }
 

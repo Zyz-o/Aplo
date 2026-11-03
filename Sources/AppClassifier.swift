@@ -1,7 +1,7 @@
 import Foundation
 
 enum AppCategory: String, CaseIterable {
-    case productivity, communication, media, creative, development, internet, games, utilities, other, system
+    case productivity, communication, media, creative, development, internet, games, utilities, other
     var title: String {
         switch self {
         case .productivity: return "效率与办公"
@@ -12,7 +12,6 @@ enum AppCategory: String, CaseIterable {
         case .internet: return "网络与浏览"
         case .games: return "游戏"
         case .utilities: return "实用工具"
-        case .system: return "系统应用"
         case .other: return "其他"
         }
     }
@@ -20,7 +19,6 @@ enum AppCategory: String, CaseIterable {
 
 enum AppClassifier {
     static func category(for app: InstalledApp) -> AppCategory {
-        if app.isSystemApplication { return .system }
         let knownID = (app.bundleIdentifier ?? "").lowercased()
         // Several Electron applications declare generic developer metadata; correct known cases first.
         if ["com.bytedance.douyin", "com.bilibili.", "com.soda.music", "com.netease.163music", "com.lemon.lvpro"].contains(where: knownID.hasPrefix) { return .media }
@@ -47,14 +45,6 @@ enum AppClassifier {
         if ["notes", "reminders", "calendar", "wps", "pages", "numbers", "keynote", "chatgpt", "claude"].contains(where: id.contains) { return .productivity }
         if ["网盘", "远程", "cleaner", "magpie", "launchnext", "calculator"].contains(where: names.contains) { return .utilities }
         return .other
-    }
-
-    static func systemLast(_ items: [LayoutItem], appsByID: [String: InstalledApp]) -> [LayoutItem] {
-        let isSystem: (LayoutItem) -> Bool = { item in
-            if let id = item.appID { return appsByID[id]?.isSystemApplication == true }
-            return !item.children.isEmpty && item.children.allSatisfy { appsByID[$0]?.isSystemApplication == true }
-        }
-        return items.filter { !isSystem($0) } + items.filter(isSystem)
     }
 
     static func layout(for apps: [InstalledApp]) -> LauncherLayout {
