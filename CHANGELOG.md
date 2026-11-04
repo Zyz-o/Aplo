@@ -1,3 +1,12 @@
+# 3.16.6 — 2026-11-04
+
+- Cross-fade the grid when a folder opens or closes instead of swapping tiles instantly.
+- Desaturate the pinned recent row slightly so it reads as a shortcut strip rather than part of the main grid.
+
+<!-- summary-zh -->
+- 打开或关闭文件夹时网格改用短促淡入淡出，不再瞬间切换。
+- 最近使用栏略微降低饱和度，与主网格在视觉上区分开。
+
 # 3.16.5 — 2026-11-04
 
 - Consolidate the launcher into one grid. Keep recent apps stationary during continuous-grid organization and hide them in short compact windows.

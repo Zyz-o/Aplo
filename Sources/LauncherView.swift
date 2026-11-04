@@ -91,21 +91,28 @@ struct LauncherView: View {
             if let result = model.inlineResult { InlineResultView(model: model, result: result) }
             if model.isSearching && model.inlineResult == nil { SearchCategoryBar(model: model).padding(.bottom, 12) }
             frequentRow
-            if model.usesFreePlacement { freeContent }
-            else if model.visibleItems.isEmpty {
-                LauncherEmptyState(model: model)
-            } else if model.isContinuousScrolling {
-                continuousContent
-            } else {
-                GeometryReader { geometry in
-                    PageStrip(motion: model.pageMotion, size: geometry.size) {
-                        ZStack(alignment: .topLeading) { pageFrames(size: geometry.size) }
-                            .frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
-                    }
-                        .onAppear { model.pageHeight = geometry.size.height }
-                        .onChange(of: geometry.size) { model.pageHeight = $0.height }
-                }.clipped()
+            // Opening or closing a folder swaps the whole grid; a short cross-fade keeps
+            // the change legible without animating dozens of tiles individually.
+            Group {
+                if model.usesFreePlacement { freeContent }
+                else if model.visibleItems.isEmpty {
+                    LauncherEmptyState(model: model)
+                } else if model.isContinuousScrolling {
+                    continuousContent
+                } else {
+                    GeometryReader { geometry in
+                        PageStrip(motion: model.pageMotion, size: geometry.size) {
+                            ZStack(alignment: .topLeading) { pageFrames(size: geometry.size) }
+                                .frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
+                        }
+                            .onAppear { model.pageHeight = geometry.size.height }
+                            .onChange(of: geometry.size) { model.pageHeight = $0.height }
+                    }.clipped()
+                }
             }
+            .id(model.openFolderID ?? "root")
+            .transition(.opacity)
+            .animation(model.preferences.animationsEnabled ? .easeInOut(duration: 0.15) : nil, value: model.openFolderID)
             if !model.isContinuousScrolling && !model.usesFreePlacement {
                 PageInteractionLock(motion: model.pageMotion) { pagination }
                     .padding(.top, model.isFullscreen ? 16 : 4)
@@ -291,6 +298,9 @@ struct LauncherView: View {
                         ForEach(recent, id: \.id) { app in
                             LauncherTile(model: model, item: .app(app.id), index: -1, selected: false) { launch(app) }
                                 .equatable().frame(width: model.tileWidth)
+                                // Slightly desaturated so the pinned row reads as a
+                                // shortcut strip rather than part of the main grid.
+                                .saturation(0.9)
                         }
                     }.frame(maxWidth: .infinity, alignment: .leading).accessibilityElement(children: .contain).accessibilityLabel(model.text("最近使用"))
                     Divider()
