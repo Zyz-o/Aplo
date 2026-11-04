@@ -1,3 +1,22 @@
+# 3.16.7 — 2026-11-05
+
+- Split the 1095-line launcher view into focused files (main view, tile, tile interactions, chrome, free-placement canvas) so a change to one area no longer recompiles the whole interface.
+- Centralise radii, stroke weights and shadow levels in `AploVisual` instead of repeating literals at each call site.
+- Tile and panel outlines now strengthen in dark mode and follow the system "Increase contrast" accessibility option, refreshing when that setting changes.
+
+<!-- summary-zh -->
+- 将 1095 行的界面文件拆分为主视图、磁贴、磁贴交互、通用组件、自由摆放画布五个文件，修改一处不再重编译整个界面。
+- 圆角、描边权重、阴影层级集中到 `AploVisual`，不再在每个调用点重复字面量。
+- 磁贴与面板描边在深色模式下更清晰，并跟随系统「增强对比度」设置，该设置变更时自动刷新。
+
+# 3.16.6 — 2026-11-04
+
+- Add a search focus glow, subtle folder hover scaling, stronger keyboard selection, and clearer icon press feedback.
+
+<!-- summary-zh -->
+- 搜索框进入搜索状态时增加描边和微光；文件夹悬停轻微放大。
+- 键盘选中更明显，图标按下时有缩放和透明度反馈。
+
 # 3.16.6 — 2026-11-04
 
 - Cross-fade the grid when a folder opens or closes instead of swapping tiles instantly.
