@@ -64,7 +64,7 @@ struct NativeDragHandle: NSViewRepresentable {
     }
 }
 
-class DragSourceView: NSView, NSDraggingSource {
+final class DragSourceView: NSView, NSDraggingSource {
     weak var model: LauncherModel?
     var itemID = ""
     var icon: NSImage?
@@ -112,7 +112,7 @@ class DragSourceView: NSView, NSDraggingSource {
         beginDraggingSession(with: draggingItems, event: event, source: self)
     }
 
-    static func folderThumbnail(_ images: [NSImage]) -> NSImage {
+    private static func folderThumbnail(_ images: [NSImage]) -> NSImage {
         NSImage(size: NSSize(width: 384, height: 384), flipped: false) { rect in
             NSColor(white: 0.72, alpha: 0.35).setFill()
             NSBezierPath(roundedRect: rect.insetBy(dx: 2, dy: 2), xRadius: 64, yRadius: 64).fill()

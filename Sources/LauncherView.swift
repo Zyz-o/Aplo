@@ -65,9 +65,9 @@ struct LauncherView: View {
             }
         }
         .overlay(alignment: .topLeading) {
-            if model.preferences.showFrameStats {
+            if model.preferences.showFrameStats && !model.showingSettings && model.inspectingApp == nil {
                 FrameStatsOverlay(active: true)
-                    .frame(width: 196, height: 24)
+                    .frame(width: 240, height: 24)
                     .padding(10)
                     .allowsHitTesting(false)
             }
@@ -90,9 +90,7 @@ struct LauncherView: View {
             else if model.visibleItems.isEmpty {
                 LauncherEmptyState(model: model)
             } else if model.isContinuousScrolling {
-                if usesNativeVerticalGrid {
-                    NativeVerticalComparison(model: model, launch: launch)
-                } else { continuousContent }
+                continuousContent
             } else {
                 GeometryReader { geometry in
                     PageStrip(motion: model.pageMotion, size: geometry.size) {
@@ -267,15 +265,10 @@ struct LauncherView: View {
         }.frame(width: model.gridWidth).frame(maxWidth: .infinity).padding(.vertical, 4)
     }
 
-    private var usesNativeVerticalGrid: Bool {
-        CommandLine.arguments.contains("--native-scroll-comparison") &&
-        model.isFullscreen && model.isContinuousScrolling && model.navigationDirection == .vertical &&
-        !model.initialDiscoveryPending && !model.isSearching && !model.usesFreePlacement &&
-        model.openFolderID == nil
-    }
-
     @ViewBuilder private var frequentRow: some View {
-        if model.openFolderID == nil && !model.isSearching && (!model.editing || usesNativeVerticalGrid) {
+        // Keep drop targets stationary when a drag switches the grid into editing.
+        let preserveGridPosition = model.isContinuousScrolling && !model.usesFreePlacement
+        if model.openFolderID == nil && !model.isSearching && (!model.editing || preserveGridPosition) {
             let recent = model.recentApplications
             if !recent.isEmpty {
                 VStack(spacing: 8) {
@@ -287,6 +280,7 @@ struct LauncherView: View {
                     }.frame(maxWidth: .infinity, alignment: .leading).accessibilityElement(children: .contain).accessibilityLabel(model.text("最近使用"))
                     Divider()
                 }.frame(width: model.gridWidth).frame(maxWidth: .infinity).padding(.bottom, 8)
+                    .allowsHitTesting(!model.editing).accessibilityHidden(model.editing)
             }
         }
     }

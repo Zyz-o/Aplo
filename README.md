@@ -82,9 +82,3 @@ Aplo 按 [GNU GPL version 3](LICENSE) 分发，包含 [LaunchNext](https://githu
 `./Scripts/install-local.sh` backs up the installed app, final layout and preferences, stages a clean replacement bundle, verifies it and checks launch liveness. Verification or activation failure restores the previous bundle and backed-up data. If filesystem errors prevent rollback, the script reports the retained recovery path. This short launch check does not guarantee the absence of later runtime failures.
 
 `./Scripts/benchmark-search.sh` measures optimized cold/warm search-index preparation and per-query latency for installed apps and 300 synthetic CJK apps. Measurements are machine-specific, not frame-rate guarantees. Normal UI discovery prepares the index off the main actor; synchronous `refresh` is reserved for deterministic tests/import support.
-
-### 全屏纵向滚动对照
-
-可在启动参数中加入 `--native-scroll-comparison`，在应用扫描完成后使用 AppKit 复用网格。仅适用于全屏、纵向连续滚动的主页；设置、搜索和文件夹内部仍使用原界面。实验网格支持文件夹缩略图、悬停放大、右键菜单和拖放；默认不会启用。
-
-比较时使用相同的布局、背景、图标大小和帧率面板设置。分别用实体触控板完成首次快滑、热缓存快滑和快速反向滑动。以手感和长帧记录共同判断，帧率面板的估算值不能单独证明零掉帧。
