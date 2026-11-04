@@ -24,6 +24,7 @@ struct LauncherView: View {
     let launch: (InstalledApp) -> Void
     @Environment(\.colorScheme) private var scheme
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var clearBackdrop: Bool { model.preferences.backgroundTransparency > 0.7 && !reduceTransparency }
     private var columns: [GridItem] { Array(repeating: GridItem(.flexible(), spacing: LauncherGeometry.gridSpacing), count: model.columnCount) }
 
@@ -496,7 +497,13 @@ struct LauncherView: View {
                 ForEach(visiblePageRange, id: \.self) { page in
                     Button { model.requestPage(page) } label: {
                         Capsule().fill(page == model.pageIndex ? model.accentColor : Color.primary.opacity(0.20))
-                            .frame(width: page == model.pageIndex ? 14 : 6, height: 6).frame(width: 28, height: 24).contentShape(Rectangle())
+                            // The active pill expands instead of jumping, so the eye can
+                            // follow the page change without counting dots.
+                            .frame(width: page == model.pageIndex ? 14 : 6, height: 6)
+                            .animation(model.preferences.animationsEnabled && !reduceMotion
+                                       ? .spring(response: 0.28, dampingFraction: 0.8) : nil,
+                                       value: model.pageIndex)
+                            .frame(width: 28, height: 24).contentShape(Rectangle())
                     }.buttonStyle(.plain).accessibilityLabel(model.pageTitle(page))
                         .accessibilityAddTraits(page == model.pageIndex ? .isSelected : [])
                         .overlay { if model.canOrganize { NativePageDropTarget(model: model, page: page) } }

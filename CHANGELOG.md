@@ -1,3 +1,14 @@
+# 3.16.8 — 2026-11-05
+
+- Keyboard selection now draws a crisp inner ring plus a soft outer halo, so it can never be confused with the mouse hover lift.
+- Hovering a tile raises it with a short neutral shadow; idle tiles stay flat so scrolling keeps its frame budget.
+- The active page dot expands with a spring instead of jumping when the page changes.
+
+<!-- summary-zh -->
+- 键盘选中改为「清晰内环 + 柔和外圈」双层描边，不会与鼠标悬停的抬升效果混淆。
+- 悬停磁贴出现轻微抬升投影，静止磁贴保持扁平，不影响滚动帧预算。
+- 当前页圆点改用弹簧展开动画，翻页时不再瞬间跳变。
+
 # 3.16.7 — 2026-11-05
 
 - Split the 1095-line launcher view into focused files (main view, tile, tile interactions, chrome, free-placement canvas) so a change to one area no longer recompiles the whole interface.

@@ -179,15 +179,33 @@ struct LauncherTile: View, Equatable {
                         .allowsHitTesting(false)
                 }
             } else if keyboardSelected {
-                RoundedRectangle(cornerRadius: AploVisual.highlightRadius).strokeBorder(model.accentColor.opacity(0.65), lineWidth: 1.5)
-                    .padding(3).allowsHitTesting(false)
+                // Two rings: a crisp inner stroke plus a soft outer halo, so keyboard
+                // selection never looks like the mouse hover lift.
+                ZStack {
+                    RoundedRectangle(cornerRadius: AploVisual.highlightRadius)
+                        .strokeBorder(model.accentColor.opacity(0.95), lineWidth: 1.8)
+                        .padding(3)
+                    RoundedRectangle(cornerRadius: AploVisual.highlightRadius + 2)
+                        .strokeBorder(model.accentColor.opacity(0.30), lineWidth: 1)
+                }.allowsHitTesting(false)
             }
         }
         .scaleEffect(keyboardSelected && p.animate && !reduceMotion ? 1.08 : 1)
-        .shadow(color: keyboardSelected && p.animate && !reduceMotion ? model.accentColor.opacity(0.3) : .clear, radius: AploVisual.focusShadowRadius)
+        // One shadow for both states: a wide accent glow for keyboard focus, a short
+        // neutral lift on hover. Kept as a single modifier so idle tiles stay flat.
+        .shadow(color: tileShadow, radius: tileShadowRadius)
         .animation(.easeOut(duration: 0.15), value: keyboardSelected)
         .accessibilityLabel(accessibilityName)
         .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+    private var tileShadow: Color {
+        guard appearance.animate, !reduceMotion else { return .clear }
+        if keyboardSelected { return model.accentColor.opacity(0.30) }
+        if hovered && !model.isContinuousScrolling && model.draggingID == nil { return .black.opacity(0.16) }
+        return .clear
+    }
+    private var tileShadowRadius: CGFloat {
+        keyboardSelected ? AploVisual.focusShadowRadius : AploVisual.hoverShadowRadius
     }
 }
 
