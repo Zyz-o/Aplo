@@ -434,7 +434,9 @@ struct LauncherView: View {
         }
         .padding(.horizontal, 13).padding(.vertical, 8)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 13))
-        .overlay(RoundedRectangle(cornerRadius: 13).strokeBorder(model.accentColor.opacity(0.22)))
+        .overlay(RoundedRectangle(cornerRadius: 13).strokeBorder(model.searchExpanded ? model.accentColor.opacity(0.6) : model.accentColor.opacity(0.22), lineWidth: model.searchExpanded ? 1.5 : 1))
+        .shadow(color: model.searchExpanded ? model.accentColor.opacity(0.2) : .clear, radius: 8)
+        .animation(.easeOut(duration: 0.18), value: model.searchExpanded)
     }
 
     @ViewBuilder private func tile(_ item: LayoutItem, index: Int, interactive: Bool = true) -> some View {
@@ -632,6 +634,8 @@ struct LauncherTile: View, Equatable {
                         // produce the identical 3×3 preview for a fraction of the cost.
                         folderPreview(previewChildren ?? item.children)
                     }.frame(width: iconSize, height: iconSize)
+                        .scaleEffect(hovered && p.magnify && !model.editing && !reduceMotion ? 1.05 : 1)
+                        .animation(.spring(response: 0.25, dampingFraction: 0.8), value: hovered)
                         .overlay(alignment: .bottomTrailing) {
                             if previewChildren == nil { Text("\(item.children.count)").lineLimit(1).minimumScaleFactor(0.5).font(.system(size: 8 * p.textScale / 100, weight: .semibold, design: .rounded))
                                 .padding(.horizontal, 4).padding(.vertical, 2)
@@ -683,6 +687,9 @@ struct LauncherTile: View, Equatable {
                     .padding(3).allowsHitTesting(false)
             }
         }
+        .scaleEffect(keyboardSelected && p.animate && !reduceMotion ? 1.08 : 1)
+        .shadow(color: keyboardSelected && p.animate && !reduceMotion ? model.accentColor.opacity(0.3) : .clear, radius: 12)
+        .animation(.easeOut(duration: 0.15), value: keyboardSelected)
         .accessibilityLabel(accessibilityName)
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
@@ -1070,7 +1077,9 @@ private struct FreePlacementTile<Content: View>: View {
 private struct LauncherPressStyle: ButtonStyle {
     let animated: Bool
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label.scaleEffect(configuration.isPressed && animated ? 0.95 : 1)
-            .animation(animated ? .interactiveSpring(response: 0.18, dampingFraction: 0.85) : nil, value: configuration.isPressed)
+        configuration.label
+            .scaleEffect(configuration.isPressed && animated ? 0.92 : 1)
+            .opacity(configuration.isPressed && animated ? 0.8 : 1)
+            .animation(animated ? .interactiveSpring(response: 0.18, dampingFraction: 0.7) : nil, value: configuration.isPressed)
     }
 }
