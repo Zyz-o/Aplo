@@ -226,11 +226,6 @@ struct SettingsView: View {
             }
         case .appearance:
             AppearanceLivePreview(model: model)
-            card("主题", icon: "circle.lefthalf.filled") {
-                Picker(model.text("外观主题"), selection: preference(\.appearance)) {
-                    ForEach(LauncherAppearance.allCases, id: \.self) { Text(model.text($0.title)).tag($0) }
-                }.pickerStyle(.segmented).labelsHidden().accessibilityLabel(model.text("外观主题"))
-            }
             card("背景", icon: "rectangle.on.rectangle") {
                 Picker(model.text("背景样式"), selection: preference(\.backgroundStyle)) {
                     ForEach(LauncherBackground.allCases, id: \.self) { Text(model.text($0.title)).tag($0) }
@@ -255,6 +250,11 @@ struct SettingsView: View {
                 }
                 Button(model.text("调整大小与对比…")) { model.presentingAppearancePreview = true; scalePreview = true }
                 switchRow("显示应用名称", key: \.showNames)
+            }
+            card("主题", icon: "circle.lefthalf.filled") {
+                Picker(model.text("外观主题"), selection: preference(\.appearance)) {
+                    ForEach(LauncherAppearance.allCases, id: \.self) { Text(model.text($0.title)).tag($0) }
+                }.pickerStyle(.segmented).labelsHidden().accessibilityLabel(model.text("外观主题"))
             }
             card("应用名称样式", icon: "textformat") {
                 Picker(model.text("字体"), selection: preference(\.labelFontFamily)) {
@@ -302,9 +302,12 @@ struct SettingsView: View {
                 note("开启时显示面板淡入与悬停过渡，遵循系统减少动态效果设置。")
                 Divider()
                 switchRow("窗口阴影", key: \.windowShadowEnabled)
-                Divider()
-                switchRow("显示帧率与帧耗时", key: \.showFrameStats)
-                note("在左上角显示实时帧率、单帧峰值与掉帧数，用于判断滑动是否顺畅。该统计本身会占用少量性能。")
+            }
+            card("高级诊断", icon: "waveform.path") {
+                DisclosureGroup(model.text("显示帧率与帧耗时")) {
+                    switchRow("显示帧率与帧耗时", key: \.showFrameStats)
+                    note("在左上角显示实时帧率、单帧峰值与掉帧数，用于判断滑动是否顺畅。该统计本身会占用少量性能。")
+                }
             }
         case .shortcuts:
             card("呼出快捷键", icon: "keyboard") {
@@ -318,33 +321,6 @@ struct SettingsView: View {
                     Button(model.text("恢复默认")) { model.resetShortcut() }.disabled(model.recordingShortcut)
                 }
                 note("至少包含 ⌘、⌃ 或 ⌥。Esc 取消录制，冲突时保留原快捷键。")
-            }
-            card("F4 备选呼出键", icon: "keyboard") {
-                switchRow("启用 F4 呼出", key: \.f4ShortcutEnabled)
-                if !model.f4ShortcutAvailable { note("F4 已被占用，请继续使用原快捷键或菜单栏入口。") }
-                note("默认关闭，不修改系统键盘设置。部分键盘需要 Fn＋F4；带搜索图案的按键可能仍打开 Spotlight。")
-            }
-            card("屏幕热角", icon: "arrow.up.left.and.arrow.down.right") {
-                HStack {
-                    Text(model.text("停留角落呼出")); Spacer()
-                    Picker(model.text("停留角落呼出"), selection: preference(\.hotCorner)) {
-                        Text(model.text("不启用")).tag("off")
-                        Text(model.text("左上角")).tag("topLeft"); Text(model.text("右上角")).tag("topRight")
-                        Text(model.text("左下角")).tag("bottomLeft"); Text(model.text("右下角")).tag("bottomRight")
-                    }.labelsHidden().frame(maxWidth: 220)
-                }
-                note("鼠标在角落停留片刻后打开。默认关闭；若系统热角使用同一角落，建议选择其他位置。")
-            }
-            card("文件夹浏览", icon: "square.grid.3x3") {
-                HStack {
-                    Text(model.text("文件夹浏览方式")); Spacer()
-                    Picker(model.text("文件夹浏览方式"), selection: preference(\.folderNavigation)) {
-                        Text(model.text("跟随主界面")).tag("inherit")
-                        Text(model.text("纵向连续滚动")).tag("continuous")
-                        Text(model.text("分页切换")).tag("paged")
-                    }.labelsHidden().frame(maxWidth: 250)
-                }
-                note("仅改变文件夹内的浏览方式，不改变主界面或应用顺序。")
             }
             card("浏览与滚动", icon: "hand.draw") {
                 VStack(alignment: .leading, spacing: 7) {
@@ -373,6 +349,33 @@ struct SettingsView: View {
                 switchRow("反向翻页", key: \.reversePaging)
                     .disabled(!model.preferences.swipeEnabled || model.isContinuousScrolling)
                 note("连续滚动与分页都使用滑动灵敏度倍率。连续滚动保留系统惯性，可停在任意位置；反向和滑动开关仅用于分页模式。")
+            }
+            card("F4 备选呼出键", icon: "keyboard") {
+                switchRow("启用 F4 呼出", key: \.f4ShortcutEnabled)
+                if !model.f4ShortcutAvailable { note("F4 已被占用，请继续使用原快捷键或菜单栏入口。") }
+                note("默认关闭，不修改系统键盘设置。部分键盘需要 Fn＋F4；带搜索图案的按键可能仍打开 Spotlight。")
+            }
+            card("屏幕热角", icon: "arrow.up.left.and.arrow.down.right") {
+                HStack {
+                    Text(model.text("停留角落呼出")); Spacer()
+                    Picker(model.text("停留角落呼出"), selection: preference(\.hotCorner)) {
+                        Text(model.text("不启用")).tag("off")
+                        Text(model.text("左上角")).tag("topLeft"); Text(model.text("右上角")).tag("topRight")
+                        Text(model.text("左下角")).tag("bottomLeft"); Text(model.text("右下角")).tag("bottomRight")
+                    }.labelsHidden().frame(maxWidth: 220)
+                }
+                note("鼠标在角落停留片刻后打开。默认关闭；若系统热角使用同一角落，建议选择其他位置。")
+            }
+            card("文件夹浏览", icon: "square.grid.3x3") {
+                HStack {
+                    Text(model.text("文件夹浏览方式")); Spacer()
+                    Picker(model.text("文件夹浏览方式"), selection: preference(\.folderNavigation)) {
+                        Text(model.text("跟随主界面")).tag("inherit")
+                        Text(model.text("纵向连续滚动")).tag("continuous")
+                        Text(model.text("分页切换")).tag("paged")
+                    }.labelsHidden().frame(maxWidth: 250)
+                }
+                note("仅改变文件夹内的浏览方式，不改变主界面或应用顺序。")
             }
             card("键盘操作", icon: "arrow.left.arrow.right") {
                 note(model.isContinuousScrolling

@@ -82,6 +82,7 @@ extension AppDelegate {
             } else { frame = saved }
         }
         if model.displayWidth != frame.width { model.displayWidth = frame.width }
+        if model.displayHeight != frame.height { model.displayHeight = frame.height }
         guard panel.frame != frame else { return }
         positionSaveWork?.cancel()
         applyingDisplayFrame = true
@@ -105,6 +106,7 @@ extension AppDelegate {
     func windowDidResize(_ notification: Notification) {
         guard !applyingDisplayFrame else { return }
         model.displayWidth = panel.frame.width
+        if model.displayHeight != panel.frame.height { model.displayHeight = panel.frame.height }
         windowDidMove(notification)
     }
 

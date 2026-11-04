@@ -80,24 +80,24 @@ struct LayoutTests {
         expect(model.editing && model.canOrganize && model.draggingID == "app:test.a00", "a real drag enters organization mode and enables folder destinations")
         var dragNotifications = 0
         let dragSubscription = model.objectWillChange.sink { dragNotifications += 1 }
-        model.updateDropTarget("app:test.a05", hint: "松开组成文件夹")
+        model.updateDropTarget("app:test.a05", hint: "松开组成文件夹", indicator: .merge)
         let initialDragNotifications = dragNotifications
-        for _ in 0..<120 { model.updateDropTarget("app:test.a05", hint: "松开组成文件夹") }
+        for _ in 0..<120 { model.updateDropTarget("app:test.a05", hint: "松开组成文件夹", indicator: .merge) }
         expect(dragNotifications == initialDragNotifications, "repeated movement over one folder target does not invalidate the grid")
         let unaffected = model.dragFeedback(for: "app:test.a39")
         var unaffectedNotifications = 0
         let unaffectedSubscription = unaffected.objectWillChange.sink { unaffectedNotifications += 1 }
         let notificationsBeforeSweep = dragNotifications
         for _ in 0..<20 {
-            for index in 1..<30 { model.updateDropTarget(String(format: "app:test.a%02d", index), hint: "松开组成文件夹") }
+            for index in 1..<30 { model.updateDropTarget(String(format: "app:test.a%02d", index), hint: "松开组成文件夹", indicator: .merge) }
         }
         expect(dragNotifications == notificationsBeforeSweep, "580 rapid destination changes do not invalidate the grid or app labels")
         expect(unaffectedNotifications == 0, "rapid dragging never invalidates untouched tile feedback")
         expect(model.dragFeedback(for: "app:test.a29").isMergeTarget && !model.dragFeedback(for: "app:test.a28").isMergeTarget, "only the current tile retains the merge preview")
         model.clearDropTarget("app:test.a28")
         expect(model.dropTargetID == "app:test.a29", "a stale destination exit cannot clear a newer drag target")
-        model.updateDropTarget("app:test.a29", hint: "松开放在后面")
-        expect(!model.dragFeedback(for: "app:test.a29").isMergeTarget, "moving to the tile edge removes the merge preview without refreshing the grid")
+        model.updateDropTarget("app:test.a29", hint: "松开放在后面", indicator: .after)
+        expect(model.dragFeedback(for: "app:test.a29").indicator == .after, "moving to the tile edge removes the merge preview without refreshing the grid")
         model.clearDropTarget()
         expect(model.dropTargetID == nil && model.dropHint == nil && dragNotifications == notificationsBeforeSweep, "clearing drag feedback does not publish a grid refresh")
         unaffectedSubscription.cancel()

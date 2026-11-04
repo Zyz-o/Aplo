@@ -7,6 +7,7 @@ enum AppStrings {
     }
     private static let cache = TranslationCache()
     static let english: [String: String] = [
+        "高级诊断": "Advanced Diagnostics",
         "保留自定义呼出快捷键、个人布局、隐藏应用和备份。": "Keeps your custom shortcut, layouts, hidden apps and backups.",
         "最近使用": "Recently Used",
         "重置音效开关、打开／关闭／导航音效和音量。": "Resets sound enablement, opening, closing and navigation sounds, and volume.",

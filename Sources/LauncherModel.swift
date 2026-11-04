@@ -20,10 +20,13 @@ final class PagePresentation: ObservableObject {
 }
 
 /// Drag destination changes invalidate only the tiles whose appearance actually changes.
+enum TileDropIndicator: Equatable { case merge, before, after }
+
 @MainActor final class TileDragFeedback: ObservableObject {
-    @Published private(set) var isMergeTarget = false
-    func setMergeTarget(_ value: Bool) {
-        if isMergeTarget != value { isMergeTarget = value }
+    @Published private(set) var indicator: TileDropIndicator?
+    var isMergeTarget: Bool { indicator == .merge }
+    func setIndicator(_ value: TileDropIndicator?) {
+        if indicator != value { indicator = value }
     }
 }
 
@@ -47,6 +50,7 @@ final class LauncherModel: ObservableObject {
         set { if pageMotion.active != newValue { pageMotion.active = newValue } }
     }
     @Published var horizontalRowCount = 3
+    @Published var displayHeight: CGFloat = 660
     @Published var pageHeight: CGFloat = 400
     var pageWidth: CGFloat { max(1, displayWidth - 2 * LauncherGeometry.contentInset(fullscreen: isFullscreen)) }
     var pageExtent: CGFloat { pageMotion.axis == .vertical ? max(1, pageHeight) : pageWidth }
@@ -886,14 +890,14 @@ final class LauncherModel: ObservableObject {
         if commitReconciled(updated) { goToPage(min(requestedPage, pageCount - 1)) }
         endDrag()
     }
-    private func setDropTarget(_ id: String?, hint: String?) {
-        guard dropTargetID != id || currentDropHint != hint else { return }
+    private func setDropTarget(_ id: String?, hint: String?, indicator: TileDropIndicator? = nil) {
+        guard dropTargetID != id || currentDropHint != hint || id.flatMap({ tileFeedback[$0]?.indicator }) != indicator else { return }
         let previous = dropTargetID
         dropTargetID = id; currentDropHint = hint
-        if let previous, previous != id { tileFeedback[previous]?.setMergeTarget(false) }
-        if let id { dragFeedback(for: id).setMergeTarget(hint?.contains("文件夹") == true) }
+        if let previous, previous != id { tileFeedback[previous]?.setIndicator(nil) }
+        if let id { dragFeedback(for: id).setIndicator(indicator) }
     }
-    func updateDropTarget(_ id: String, hint: String) { setDropTarget(id, hint: hint) }
+    func updateDropTarget(_ id: String, hint: String, indicator: TileDropIndicator) { setDropTarget(id, hint: hint, indicator: indicator) }
     func clearDropTarget(_ expectedID: String? = nil) {
         guard expectedID == nil || dropTargetID == expectedID else { return }
         setDropTarget(nil, hint: nil)

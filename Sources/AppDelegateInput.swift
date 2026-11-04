@@ -67,7 +67,10 @@ extension AppDelegate {
             }
             switch Int(event.keyCode) {
             case kVK_Escape:
-                if self.model.searchExpanded { self.model.query = ""; self.model.searchExpanded = false }
+                if self.model.searchExpanded {
+                    self.panel.makeFirstResponder(nil)
+                    self.model.query = ""; self.model.searchExpanded = false
+                }
                 else if self.model.openFolderID != nil { self.model.closeFolder() }
                 else if self.model.editing { self.model.toggleEditing() }
                 else { self.hidePanel(restorePrevious: true) }

@@ -1,3 +1,16 @@
+# 3.16.5 — 2026-11-04
+
+- Consolidate the launcher into one grid. Keep recent apps stationary during continuous-grid organization and hide them in short compact windows.
+- Put search above the fullscreen grid. Keep a compact search entry in small windows and show organization guidance only while editing.
+- Mark folder merges with an outline and reorder targets with an insertion line. Update only the affected tiles.
+- Prioritize appearance and browsing controls in Settings and move the frame overlay into advanced diagnostics.
+
+<!-- summary-zh -->
+- 合并为一套应用网格；连续浏览整理时常用栏不跳位，较矮的小窗自动隐藏常用栏。
+- 全屏搜索移到顶部，小窗保留紧凑入口；整理提示只在整理时显示。
+- 拖到中心以边框提示分组，拖到边缘以细线提示插入位置。
+- 常用外观和浏览选项前置，帧率浮层移入高级诊断。
+
 # 3.16.4 — 2026-11-04
 
 - Frame overlay now uses the actual display-link period as its baseline, so ProMotion panels no longer report false drops when the system lowers its refresh rate.

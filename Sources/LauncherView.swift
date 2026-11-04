@@ -80,7 +80,12 @@ struct LauncherView: View {
 
     private var launcherContent: some View {
         VStack(spacing: 0) {
-            header.frame(maxWidth: model.gridWidth).padding(.bottom, 16)
+            header.frame(maxWidth: model.gridWidth).padding(.bottom, 10)
+            if showsTopSearch {
+                search.frame(maxWidth: 390).padding(.bottom, 12)
+                    .opacity(model.editing ? 0.45 : 1)
+                    .allowsHitTesting(!model.editing).accessibilityHidden(model.editing)
+            }
             if model.preferences.toolbarPosition == .top { toolbar.padding(.bottom, 12) }
             MessageBanner(model: model)
             if let result = model.inlineResult { InlineResultView(model: model, result: result) }
@@ -150,17 +155,26 @@ struct LauncherView: View {
         }
     }
 
+    private var showsTopSearch: Bool { model.isFullscreen && model.openFolderID == nil }
+
     private var toolbar: some View {
         ZStack {
                 HStack {
                     HStack(spacing: 8) {
+                        if !showsTopSearch && !model.editing {
                         Button {
                             model.searchExpanded.toggle()
                             if model.searchExpanded { model.focusGeneration += 1 } else { model.query = "" }
                         } label: { Image(systemName: model.searchExpanded ? "xmark" : "magnifyingglass").frame(width: 34, height: 34) }
                             .buttonStyle(.plain).accessibilityLabel(model.text("搜索应用"))
-                        if model.searchExpanded { search.frame(maxWidth: 290) }
-                        else { Text(model.text("\(model.visibleApplicationCount) 个应用")) }
+                        }
+                        if model.editing {
+                            Text(model.text(model.dropDescription)).lineLimit(1)
+                        } else if model.searchExpanded && !showsTopSearch {
+                            search.frame(maxWidth: 290)
+                        } else {
+                            Text(model.text("\(model.visibleApplicationCount) 个应用")).monospacedDigit()
+                        }
                     }.frame(maxWidth: .infinity, alignment: .leading)
                     Spacer(minLength: 48)
                     arrangementControls.frame(maxWidth: .infinity, alignment: .trailing)
@@ -270,7 +284,8 @@ struct LauncherView: View {
         let preserveGridPosition = model.isContinuousScrolling && !model.usesFreePlacement
         if model.openFolderID == nil && !model.isSearching && (!model.editing || preserveGridPosition) {
             let recent = model.recentApplications
-            if !recent.isEmpty {
+            let minimumHeight = max(575, 390 + model.displayedIconSize + model.preferences.labelHeight)
+            if !recent.isEmpty && (model.isFullscreen || model.displayHeight >= minimumHeight) {
                 VStack(spacing: 8) {
                     HStack(spacing: LauncherGeometry.gridSpacing) {
                         ForEach(recent, id: \.id) { app in
@@ -366,8 +381,7 @@ struct LauncherView: View {
                     .padding(.horizontal, clearBackdrop ? 7 : 0)
                     .foregroundStyle(clearBackdrop ? Color.white : Color.primary)
 
-                Text(model.text(model.isContinuousScrolling ? "\(model.visibleApplicationCount) 个应用 · 连续滚动" : "\(model.visibleApplicationCount) 个应用 · \(model.pageCount) 页"))
-                    .font(.system(size: model.preferences.textPoints(11))).foregroundStyle(.secondary)
+
             }.allowsHitTesting(false)
             HStack(alignment: .top) {
                 if let folder = model.openFolder, !model.isSearching {
@@ -402,7 +416,7 @@ struct LauncherView: View {
 
                     .foregroundStyle(clearBackdrop ? Color.white : Color.secondary)
             }.frame(maxHeight: .infinity, alignment: .top).padding(.top, 3)
-        }.frame(height: max(44, model.preferences.brandNamePoints * 1.3 + model.preferences.textPoints(11) * 1.3 + 8))
+        }.frame(height: max(44, model.preferences.brandNamePoints * 1.3 + 8))
             .help(model.isFullscreen ? model.text("切换小面板") : model.text("拖动顶部移动窗口"))
     }
 
@@ -411,7 +425,7 @@ struct LauncherView: View {
             Image(systemName: "magnifyingglass").font(.system(size: model.preferences.textPoints(15), weight: .medium)).foregroundStyle(model.accentColor)
             NativeInput(text: $model.query, placeholder: "搜索应用、拼音或首字母…",
                         focusGeneration: model.focusGeneration,
-                        identifier: "app-search", requestsFocus: model.searchExpanded && model.renamingFolderID == nil, language: model.preferences.language, textScale: model.preferences.textScalePercent / 100).frame(height: model.preferences.textPoints(24))
+                        identifier: "app-search", requestsFocus: model.searchExpanded && !model.editing && model.renamingFolderID == nil, language: model.preferences.language, textScale: model.preferences.textScalePercent / 100).frame(height: model.preferences.textPoints(24))
             if !model.query.isEmpty {
                 Button { model.query = ""; model.focusGeneration += 1 } label: {
                     Image(systemName: "xmark.circle.fill").foregroundStyle(.tertiary)
@@ -654,7 +668,17 @@ struct LauncherTile: View, Equatable {
         .help(p.showNames ? "" : displayName)
         .animation(reduceMotion || continuous || !p.animate || dragging != nil ? nil : .easeOut(duration: 0.12), value: hovered)
         .overlay {
-            if keyboardSelected {
+            if let indicator = dragFeedback.indicator {
+                if indicator == .merge {
+                    RoundedRectangle(cornerRadius: 14).strokeBorder(model.accentColor, lineWidth: 2)
+                        .padding(3).allowsHitTesting(false)
+                } else {
+                    Capsule().fill(model.accentColor).frame(width: 3)
+                        .padding(.vertical, 8)
+                        .frame(maxWidth: .infinity, alignment: indicator == .before ? .leading : .trailing)
+                        .allowsHitTesting(false)
+                }
+            } else if keyboardSelected {
                 RoundedRectangle(cornerRadius: 14).strokeBorder(model.accentColor.opacity(0.65), lineWidth: 1.5)
                     .padding(3).allowsHitTesting(false)
             }
@@ -752,7 +776,8 @@ private struct TileDropDelegate: DropDelegate {
     private func position(_ info: DropInfo) -> ItemDropPosition {
         if info.location.x < width * 0.26 { return .before }
         if info.location.x > width * 0.74 { return .after }
-        return .center
+        if model.openFolderID == nil, target.kind == .folder || model.draggingID?.hasPrefix("app:") == true { return .center }
+        return info.location.x < width / 2 ? .before : .after
     }
     func dropUpdated(info: DropInfo) -> DropProposal? {
         guard validateDrop(info: info) else { return DropProposal(operation: .forbidden) }
@@ -761,7 +786,7 @@ private struct TileDropDelegate: DropDelegate {
         if p == .center && model.openFolderID == nil {
             hint = target.kind == .folder ? "松开移入文件夹" : "松开组成文件夹"
         } else { hint = p == .after ? "松开放在后面" : "松开放在前面" }
-        model.updateDropTarget(target.id, hint: hint)
+        model.updateDropTarget(target.id, hint: hint, indicator: p == .center ? .merge : p == .before ? .before : .after)
         return DropProposal(operation: .move)
     }
     func dropExited(info: DropInfo) {
