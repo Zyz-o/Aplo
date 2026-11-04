@@ -105,6 +105,7 @@ struct NativeVerticalComparison: NSViewRepresentable {
         super.prepareForReuse()
         updates = nil
         icon.image = nil
+        drag.clearLocalDrag()
         drag.click = nil
         drag.resolveIconResources = nil
         magnifier.setScale(1, immediately: true)
@@ -147,31 +148,76 @@ struct NativeVerticalComparison: NSViewRepresentable {
 }
 
 @MainActor private final class ComparisonDragTile: DragSourceView {
-    private let payloadType = NSPasteboard.PasteboardType(launcherDragType.identifier)
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        registerForDraggedTypes([payloadType])
+    private var origin: NSPoint?
+    private var localSource: String?
+    private var handedOff = false
+    private var ghost: NSImageView?
+    private var grid: ComparisonGrid? {
+        sequence(first: superview, next: { $0?.superview }).compactMap { $0 as? ComparisonGrid }.first
     }
-    required init?(coder: NSCoder) { nil }
-    private func source(_ sender: NSDraggingInfo) -> String? {
-        guard let model, model.canOrganize, let source = model.draggingID, source != itemID,
-              sender.draggingPasteboard.pasteboardItems?.contains(where: { $0.string(forType: payloadType) == source }) == true else { return nil }
-        return source
+
+    override func mouseDown(with event: NSEvent) {
+        origin = event.locationInWindow
+        handedOff = false
+        super.mouseDown(with: event)
     }
-    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { draggingUpdated(sender) }
-    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { source(sender) == nil ? [] : .move }
-    override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool { source(sender) != nil }
-    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
-        guard let model, let source = source(sender) else { return false }
-        let ratio = convert(sender.draggingLocation, from: nil).x / max(bounds.width, 1)
-        model.drop(source, onto: itemID, position: ratio < 0.26 ? .before : ratio > 0.74 ? .after : .center)
-        return true
+
+    override func mouseDragged(with event: NSEvent) {
+        if handedOff { super.mouseDragged(with: event); return }
+        guard let model, let grid, let origin, model.canBeginIconDrag,
+              hypot(origin.x - event.locationInWindow.x, origin.y - event.locationInWindow.y) >= 3 else { return }
+        let point = grid.convert(event.locationInWindow, from: nil)
+        if !grid.visibleRect.contains(point) {
+            clearLocalDrag()
+            handedOff = true
+            super.mouseDragged(with: event)
+            return
+        }
+        if localSource == nil {
+            localSource = itemID
+            model.beginInteractiveDrag(itemID)
+            if let content = window?.contentView {
+                refreshIconResources()
+                let preview = NSImageView()
+                preview.image = model.app(for: String(itemID.dropFirst(4))).map { model.icon(for: $0) }
+                    ?? Self.folderThumbnail(folderImages)
+                preview.imageScaling = .scaleProportionallyUpOrDown
+                preview.alphaValue = 0.8
+                content.addSubview(preview)
+                ghost = preview
+            }
+        }
+        if let ghost, let content = ghost.superview {
+            let cursor = content.convert(event.locationInWindow, from: nil)
+            ghost.frame = NSRect(x: cursor.x - iconSize / 2, y: cursor.y - iconSize / 2, width: iconSize, height: iconSize)
+        }
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        origin = nil
+        guard let source = localSource else { super.mouseUp(with: event); return }
+        let destination = grid?.target(at: event.locationInWindow)
+        if let model, let (item, position) = destination, item.id != source {
+            model.drop(source, onto: item.id, position: position)
+        }
+        clearLocalDrag()
+    }
+
+    func clearLocalDrag() {
+        ghost?.removeFromSuperview(); ghost = nil
+        if let localSource, model?.draggingID == localSource { model?.endDrag() }
+        localSource = nil
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window == nil { clearLocalDrag() }
     }
 }
 
 @MainActor final class ComparisonGrid: NSCollectionView {
     weak var owner: NativeVerticalComparison.Coordinator?
-    private func target(at windowPoint: NSPoint) -> (LayoutItem, ItemDropPosition)? {
+    func target(at windowPoint: NSPoint) -> (LayoutItem, ItemDropPosition)? {
         let point = convert(windowPoint, from: nil)
         guard let owner, let path = indexPathForItem(at: point), owner.items.indices.contains(path.item),
               let frame = layoutAttributesForItem(at: path)?.frame else { return nil }

@@ -97,6 +97,11 @@ import QuartzCore
         if let previous = magnifiedView, previous !== target {
             previous.setScale(1, immediately: true)
         }
+        if magnifiedView !== target, let target, CommandLine.arguments.contains("--diagnostics") {
+            let identifier = target.applicationID ?? "folder"
+            let message = "[Aplo] hover magnified \(identifier) scale=\(targetScale)\n"
+            FileHandle.standardError.write(Data(message.utf8))
+        }
         magnifiedView = target
         if let target { target.setScale(targetScale) }
     }
