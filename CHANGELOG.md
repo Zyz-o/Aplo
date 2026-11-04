@@ -1,3 +1,14 @@
+# 3.16.4 — 2026-11-04
+
+- Frame overlay now uses the actual display-link period as its baseline, so ProMotion panels no longer report false drops when the system lowers its refresh rate.
+- The overlay shows both the current window's drops and a running total, and it stops sampling while settings or the inspector are open.
+- Experimental comparison builds no longer register the global hotkey, preventing shortcut conflicts with the main Aplo instance.
+
+<!-- summary-zh -->
+- 帧率浮层改用实际显示链路周期作为基准，ProMotion 屏幕降刷时不再误报掉帧。
+- 浮层同时显示当前窗口与累计掉帧数，打开设置或应用速览时自动停止采样。
+- 实验对比副本不再注册全局快捷键，避免与主程序冲突。
+
 # 3.16.3 — 2026-11-04
 
 - Keep SwiftUI as the default grid after the physical trackpad comparison showed similar scroll feel.

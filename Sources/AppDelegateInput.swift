@@ -97,6 +97,12 @@ extension AppDelegate {
     }
 
     func registerHotKey() {
+        // Experimental comparison builds must not steal the global shortcut from the
+        // main Aplo instance that is already running.
+        if CommandLine.arguments.contains("--native-scroll-comparison") {
+            trace("hotkey registration skipped for experimental build")
+            return
+        }
         var type = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
         let context = Unmanaged.passUnretained(self).toOpaque()
         let handlerStatus = InstallEventHandler(GetApplicationEventTarget(), { _, _, context in

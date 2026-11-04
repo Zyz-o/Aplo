@@ -5,8 +5,9 @@ import SwiftUI
 /// Live frame statistics for judging scroll smoothness objectively.
 ///
 /// The numbers come from the window's display link, so they reflect what the
-/// compositor actually delivered. A steady 120 Hz trackpad scroll shows an
-/// interval flat at ~8.3 ms; a dropped frame shows up as a spike and a miss.
+/// compositor actually delivered. ProMotion panels vary their refresh rate
+/// dynamically, so the drop detector uses the *actual* cadence of the current
+/// window rather than the fastest interval ever seen.
 struct FrameStatsOverlay: NSViewRepresentable {
     let active: Bool
     func makeNSView(context: Context) -> FrameStatsView { FrameStatsView() }
@@ -18,11 +19,12 @@ final class FrameStatsView: NSView {
     /// `CADisplayLink` exists only on macOS 14+, so it is held type-erased.
     private var link: Any?
     private var previous: CFTimeInterval = 0
-    private var baseline: CFTimeInterval = 0
     private var windowStart: CFTimeInterval = 0
     private var frames = 0
     private var drops = 0
+    private var totalDrops = 0
     private var worst: CFTimeInterval = 0
+    private var worstEver: CFTimeInterval = 0
     private var active = false
 
     override init(frame frameRect: NSRect) {
@@ -81,8 +83,9 @@ final class FrameStatsView: NSView {
     }
 
     private func reset() {
-        previous = 0; baseline = 0; windowStart = 0
-        frames = 0; drops = 0; worst = 0
+        previous = 0; windowStart = 0
+        frames = 0; drops = 0; totalDrops = 0
+        worst = 0; worstEver = 0
         label.stringValue = "—"
     }
 
@@ -93,17 +96,21 @@ final class FrameStatsView: NSView {
         let interval = now - previous
         previous = now
         guard interval > 0, interval < 1 else { return }
-        // The fastest interval seen so far approximates the panel's native cadence.
-        if baseline == 0 || interval < baseline { baseline = interval }
         frames += 1
         if interval > worst { worst = interval }
-        if interval > baseline * 1.5 {
-            drops += max(1, Int((interval / baseline).rounded()) - 1)
+        if interval > worstEver { worstEver = interval }
+        // ProMotion varies its cadence; use the *actual* period of this window's
+        // display link as the baseline, not the fastest interval ever observed.
+        let expected = displayLink.duration > 0 ? displayLink.duration : (1.0 / 60.0)
+        if interval > expected * 1.5 {
+            let missed = max(1, Int((interval / expected).rounded()) - 1)
+            drops += missed
+            totalDrops += missed
         }
         guard now - windowStart >= 0.5 else { return }
         let elapsed = now - windowStart
         let fps = Double(frames) / elapsed
-        label.stringValue = String(format: "%.0f fps · 峰值 %.1f ms · 掉帧 %d", fps, worst * 1000, drops)
+        label.stringValue = String(format: "%.0f fps · 峰值 %.1f ms · 掉帧 %d (累计 %d)", fps, worst * 1000, drops, totalDrops)
         label.textColor = drops == 0 ? .systemGreen : (drops < 6 ? .systemYellow : .systemRed)
         windowStart = now; frames = 0; drops = 0; worst = 0
     }
