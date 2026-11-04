@@ -90,9 +90,7 @@ struct LauncherView: View {
             else if model.visibleItems.isEmpty {
                 LauncherEmptyState(model: model)
             } else if model.isContinuousScrolling {
-                if CommandLine.arguments.contains("--native-scroll-comparison"),
-                   model.isFullscreen, model.navigationDirection == .vertical,
-                   !model.initialDiscoveryPending, !model.editing, !model.isSearching, model.openFolderID == nil {
+                if usesNativeVerticalGrid {
                     NativeVerticalComparison(model: model, launch: launch)
                 } else { continuousContent }
             } else {
@@ -269,8 +267,15 @@ struct LauncherView: View {
         }.frame(width: model.gridWidth).frame(maxWidth: .infinity).padding(.vertical, 4)
     }
 
+    private var usesNativeVerticalGrid: Bool {
+        CommandLine.arguments.contains("--native-scroll-comparison") &&
+        model.isFullscreen && model.isContinuousScrolling && model.navigationDirection == .vertical &&
+        !model.initialDiscoveryPending && !model.isSearching && !model.usesFreePlacement &&
+        model.openFolderID == nil
+    }
+
     @ViewBuilder private var frequentRow: some View {
-        if model.openFolderID == nil && !model.isSearching && !model.editing {
+        if model.openFolderID == nil && !model.isSearching && (!model.editing || usesNativeVerticalGrid) {
             let recent = model.recentApplications
             if !recent.isEmpty {
                 VStack(spacing: 8) {
