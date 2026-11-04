@@ -23,17 +23,11 @@
 # 3.16.6 — 2026-11-04
 
 - Add a search focus glow, subtle folder hover scaling, stronger keyboard selection, and clearer icon press feedback.
+- Cross-fade the grid on folder changes and slightly desaturate the recent apps row.
 
 <!-- summary-zh -->
 - 搜索框进入搜索状态时增加描边和微光；文件夹悬停轻微放大。
 - 键盘选中更明显，图标按下时有缩放和透明度反馈。
-
-# 3.16.6 — 2026-11-04
-
-- Cross-fade the grid when a folder opens or closes instead of swapping tiles instantly.
-- Desaturate the pinned recent row slightly so it reads as a shortcut strip rather than part of the main grid.
-
-<!-- summary-zh -->
 - 打开或关闭文件夹时网格改用短促淡入淡出，不再瞬间切换。
 - 最近使用栏略微降低饱和度，与主网格在视觉上区分开。
 

@@ -131,4 +131,3 @@ struct PageInteractionLock<Content: View>: View {
     }
     var body: some View { content.disabled(motion.active).allowsHitTesting(!motion.active) }
 }
-
