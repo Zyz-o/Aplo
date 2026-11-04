@@ -1,3 +1,12 @@
+# 3.16.3 — 2026-11-04
+
+- Keep SwiftUI as the default grid after the physical trackpad comparison showed similar scroll feel.
+- Preserve the opt-in AppKit fullscreen vertical grid with folder previews, hover magnification, context menus and in-grid dragging. Dropping at the center groups apps; dropping at an edge reorders them. The recent-app row stays in place while dragging.
+
+<!-- summary-zh -->
+- 实体触控板对比中，两种网格的快速滚动手感接近，因此继续使用 SwiftUI 作为默认。
+- 保留可选的 AppKit 全屏纵向网格，支持文件夹缩略图、悬停放大、右键菜单和网格内拖放。拖到中心分组，拖到边缘排序，常用栏在拖动时保持原位。
+
 # 3.16.2 — 2026-11-04
 
 - Add an optional frame-rate overlay (Appearance settings) reporting live fps, peak frame time and dropped frames, so scroll smoothness can be measured instead of guessed.
