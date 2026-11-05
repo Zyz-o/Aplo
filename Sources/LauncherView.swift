@@ -81,7 +81,7 @@ struct LauncherView: View {
 
     private var launcherContent: some View {
         VStack(spacing: 0) {
-            header.frame(maxWidth: model.gridWidth).padding(.bottom, 10)
+            header.frame(maxWidth: model.gridWidth).padding(.bottom, model.isFullscreen ? 10 : 4)
             if showsTopSearch {
                 search.frame(maxWidth: 390).padding(.bottom, 12)
                     .opacity(model.editing ? 0.45 : 1)
@@ -166,40 +166,44 @@ struct LauncherView: View {
     private var showsTopSearch: Bool { model.isFullscreen && model.openFolderID == nil }
 
     private var toolbar: some View {
-        ZStack {
-                HStack {
-                    HStack(spacing: 8) {
-                        if !showsTopSearch && !model.editing {
-                        Button {
-                            model.searchExpanded.toggle()
-                            if model.searchExpanded { model.focusGeneration += 1 } else { model.query = "" }
-                        } label: { Image(systemName: model.searchExpanded ? "xmark" : "magnifyingglass").frame(width: 34, height: 34) }
-                            .buttonStyle(.plain).accessibilityLabel(model.text("搜索应用"))
-                        }
-                        if model.editing {
-                            Text(model.text(model.dropDescription)).lineLimit(1)
-                        } else if model.searchExpanded && !showsTopSearch {
-                            search.frame(maxWidth: 290)
-                        } else {
-                            Text(model.text("\(model.visibleApplicationCount) 个应用")).monospacedDigit()
-                        }
-                    }.frame(maxWidth: .infinity, alignment: .leading)
-                    Spacer(minLength: 48)
-                    arrangementControls.frame(maxWidth: .infinity, alignment: .trailing)
-                        .help(model.text(model.canOrganize ? model.dropDescription : "方向键选择   ↵ 打开   esc 返回"))
-                }.font(.system(size: model.preferences.textPoints(11))).foregroundStyle(clearBackdrop ? Color.white : Color.secondary)
-                Button { model.openSettings() } label: {
-                    Image(systemName: "gearshape").font(.system(size: 17, weight: .medium))
-                        .frame(width: 40, height: 36)
-                        .foregroundStyle(.white)
-                        .background(Color.black.opacity(0.66), in: Capsule())
-                        .overlay(Capsule().strokeBorder(.white.opacity(0.55)))
-                        .shadow(color: .black.opacity(0.25), radius: 3, y: 1)
-                }.buttonStyle(.plain)
-                    .help(model.text("设置与备份"))
-                    .accessibilityLabel(model.text("设置与备份"))
-            }.frame(maxWidth: model.gridWidth).frame(height: LauncherGeometry.toolbarHeight)
-
+        HStack(spacing: model.isFullscreen ? 12 : 6) {
+            HStack(spacing: 6) {
+                if !showsTopSearch && !model.editing {
+                    Button {
+                        model.searchExpanded.toggle()
+                        if model.searchExpanded { model.focusGeneration += 1 } else { model.query = "" }
+                    } label: {
+                        Image(systemName: model.searchExpanded ? "xmark" : "magnifyingglass")
+                            .frame(width: 34, height: 34)
+                    }.buttonStyle(.plain).accessibilityLabel(model.text("搜索应用"))
+                }
+                if model.editing {
+                    Text(model.text("正在整理")).lineLimit(1).help(model.text(model.dropDescription))
+                } else if model.searchExpanded && !showsTopSearch {
+                    search.frame(maxWidth: 290)
+                } else {
+                    Text(model.text("\(model.visibleApplicationCount) 个应用")).monospacedDigit().lineLimit(1)
+                }
+            }.frame(maxWidth: .infinity, alignment: .leading)
+            arrangementControls
+                .help(model.text(model.canOrganize ? model.dropDescription : "方向键选择   ↵ 打开   esc 返回"))
+            Button { model.openSettings() } label: {
+                Image(systemName: "gearshape").font(.system(size: 17, weight: .medium))
+                    .frame(width: 36, height: 32)
+                    .foregroundStyle(clearBackdrop ? Color.white : Color.primary)
+                    .background(.primary.opacity(0.09), in: Capsule())
+            }.buttonStyle(.plain)
+                .help(model.text("设置与备份"))
+                .accessibilityLabel(model.text("设置与备份"))
+        }
+        .padding(.horizontal, 6)
+        .font(.system(size: model.preferences.textPoints(11)))
+        .foregroundStyle(clearBackdrop ? Color.white : Color.primary)
+        .background {
+            if clearBackdrop { Capsule().fill(.black.opacity(0.64)) }
+        }
+        .frame(maxWidth: model.gridWidth)
+        .frame(minHeight: LauncherGeometry.toolbarHeight)
     }
 
     private var freeContent: some View {
@@ -289,12 +293,16 @@ struct LauncherView: View {
 
     @ViewBuilder private var frequentRow: some View {
         // Keep drop targets stationary when a drag switches the grid into editing.
-        let preserveGridPosition = model.isContinuousScrolling && !model.usesFreePlacement
-        if model.openFolderID == nil && !model.isSearching && (!model.editing || preserveGridPosition) {
+        if model.openFolderID == nil && !model.isSearching {
             let recent = model.recentApplications
             let minimumHeight = max(575, 390 + model.displayedIconSize + model.preferences.labelHeight)
             if !recent.isEmpty && (model.isFullscreen || model.displayHeight >= minimumHeight) {
                 VStack(spacing: 8) {
+                    if model.isFullscreen {
+                        Text(model.text("最近使用"))
+                            .font(.system(size: model.preferences.textPoints(12), weight: .semibold))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                     HStack(spacing: LauncherGeometry.gridSpacing) {
                         ForEach(recent, id: \.id) { app in
                             LauncherTile(model: model, item: .app(app.id), index: -1, selected: false) { launch(app) }

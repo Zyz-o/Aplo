@@ -292,6 +292,17 @@ final class PointerSurface: NSView {
         case .custom: return Self.color(hex: preferences.labelColorHex)
         }
     }
+    static func applicationLabelShadow(color: LauncherLabelColor, hex: String) -> Color {
+        var darkText = color == .black
+        if color == .custom, let rgb = UInt64(hex.dropFirst(), radix: 16) {
+            let red = Double((rgb >> 16) & 255)
+            let green = Double((rgb >> 8) & 255)
+            let blue = Double(rgb & 255)
+            darkText = 0.2126 * red + 0.7152 * green + 0.0722 * blue < 128
+        }
+        return darkText ? .white.opacity(0.85) : .black.opacity(0.85)
+    }
+
     static func color(hex: String) -> Color {
         let rgb = UInt64(hex.dropFirst(), radix: 16) ?? 0xFFFFFF
         return Color(red: Double((rgb >> 16) & 255) / 255, green: Double((rgb >> 8) & 255) / 255, blue: Double(rgb & 255) / 255)

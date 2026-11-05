@@ -160,6 +160,7 @@ struct LauncherPreferences: Codable, Equatable {
     var gestureSensitivity = 1.6
     var automaticCategories = true
     var animationsEnabled = true
+    var organizeWiggleEnabled = true
     var windowShadowEnabled = true
     /// Diagnostics overlay: live frame rate and frame time. Off by default.
     var showFrameStats = false
@@ -181,7 +182,7 @@ struct LauncherPreferences: Codable, Equatable {
         case dockVisibility, language, colorVision, iconScalePercent, textScalePercent, systemAppsLast
         case backgroundStyle, appearance, iconSize, showNames, swipeEnabled, reversePaging, automaticCategories
         case verticalPaging, gestureSensitivity, backgroundTransparency, pagingDirection, navigationStyle
-        case animationsEnabled, windowShadowEnabled, soundEffectsEnabled, soundOpen, soundClose, soundNavigation, soundVolume
+        case animationsEnabled, organizeWiggleEnabled, windowShadowEnabled, soundEffectsEnabled, soundOpen, soundClose, soundNavigation, soundVolume
         case showFrameStats
     }
     init(from decoder: Decoder) throws {
@@ -239,6 +240,7 @@ struct LauncherPreferences: Codable, Equatable {
         gestureSensitivity = sensitivity.isFinite ? min(2.4, max(0.8, sensitivity)) : 1.6
         automaticCategories = try c.decodeIfPresent(Bool.self, forKey: .automaticCategories) ?? true
         animationsEnabled = try c.decodeIfPresent(Bool.self, forKey: .animationsEnabled) ?? true
+        organizeWiggleEnabled = try c.decodeIfPresent(Bool.self, forKey: .organizeWiggleEnabled) ?? true
         windowShadowEnabled = try c.decodeIfPresent(Bool.self, forKey: .windowShadowEnabled) ?? true
         showFrameStats = try c.decodeIfPresent(Bool.self, forKey: .showFrameStats) ?? false
         soundEffectsEnabled = try c.decodeIfPresent(Bool.self, forKey: .soundEffectsEnabled) ?? false

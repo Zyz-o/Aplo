@@ -38,7 +38,7 @@ struct LauncherTile: View, Equatable {
         self.displayName = model.name(for: item)
         self.accessibilityName = model.text((item.kind == .folder ? "打开文件夹 " : "打开 ") + displayName)
         self.editing = model.editing; self.draggingID = model.draggingID
-        self.wigglesInEditMode = model.editing && model.organizesExplicitly
+        self.wigglesInEditMode = model.editing && model.organizesExplicitly && model.preferences.organizeWiggleEnabled
         self.freePlacement = model.usesFreePlacement; self.continuous = model.isContinuousScrolling
         let p = model.preferences
         self.appearance = TileAppearanceKey(iconSize: min(p.iconPoints(fullscreen: model.isFullscreen), max(24, model.tileWidth - 18)), labelHeight: p.labelHeight, textScale: p.textScalePercent, showNames: p.showNames, font: p.labelFontFamily, weight: p.labelWeight, color: p.labelColor, colorHex: p.labelColorHex, transparentLabels: p.backgroundTransparency > 0.7, vision: p.colorVision, magnify: p.magnificationEnabled, animate: p.animationsEnabled)
@@ -152,9 +152,9 @@ struct LauncherTile: View, Equatable {
                     .foregroundStyle(model.applicationLabelColor)
                     .lineLimit(2).multilineTextAlignment(.center)
                     .padding(.horizontal, clearBackdrop ? 4 : 0)
-                    // Skip the glyph shadow while a gesture or transition is animating;
-                    // blurred text shadows are the most expensive per-tile layer effect.
-                    .shadow(color: clearBackdrop && !continuous && !model.pageTransitionActive ? (p.color == .black ? .white.opacity(0.6) : .black.opacity(0.65)) : .clear, radius: 1, y: 1)
+                    .shadow(color: clearBackdrop && !model.pageTransitionActive
+                            ? LauncherModel.applicationLabelShadow(color: p.color, hex: p.colorHex) : .clear,
+                            radius: continuous ? 0 : 1, y: 1)
                     .frame(height: p.labelHeight, alignment: .top)
                     .opacity(p.showNames ? 1 : 0).accessibilityHidden(!p.showNames)
             }
@@ -192,6 +192,14 @@ struct LauncherTile: View, Equatable {
                     RoundedRectangle(cornerRadius: AploVisual.highlightRadius + 2)
                         .strokeBorder(model.accentColor.opacity(0.30), lineWidth: 1)
                 }.allowsHitTesting(false)
+            }
+        }
+        .overlay(alignment: .topTrailing) {
+            if keyboardSelected && model.isSearching && dragging == nil && !editing {
+                Text(model.text("↵ 打开")).font(.system(size: 10, weight: .semibold))
+                    .lineLimit(1).padding(.horizontal, 5).padding(.vertical, 2)
+                    .background(.regularMaterial, in: Capsule())
+                    .padding(5).allowsHitTesting(false).accessibilityHidden(true)
             }
         }
         .scaleEffect(keyboardSelected && p.animate && !reduceMotion ? 1.08 : 1)

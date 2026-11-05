@@ -9,6 +9,10 @@ enum AppStrings {
     static let english: [String: String] = [
         "高级诊断": "Advanced Diagnostics",
         "保留自定义呼出快捷键、个人布局、隐藏应用和备份。": "Keeps your custom shortcut, layouts, hidden apps and backups.",
+        "正在整理": "Organizing",
+        "整理时轻晃图标": "Wiggle icons while organizing",
+        "清除分类筛选": "Clear category filter",
+        "↵ 打开": "↵ Open",
         "最近使用": "Recently Used",
         "重置音效开关、打开／关闭／导航音效和音量。": "Resets sound enablement, opening, closing and navigation sounds, and volume.",
         "重置 F4、热角、文件夹浏览方式、滚动方向、分页开关、反向翻页和灵敏度。": "Resets F4, hot corner, folder navigation, scroll direction, paging controls and sensitivity.",

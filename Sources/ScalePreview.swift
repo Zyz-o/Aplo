@@ -92,28 +92,33 @@ struct AppearanceLivePreview: View {
     @ObservedObject var model: LauncherModel
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Label(model.text("实时预览"), systemImage: "eye").font(.headline)
-            HStack(spacing: 24) {
-                ForEach(Array(model.apps.prefix(3))) { app in
-                    VStack(spacing: 6) {
-                        PreviewAppIcon(model: model, app: app)
-                            .frame(width: min(90, model.preferences.iconPoints(fullscreen: model.isFullscreen)), height: min(90, model.preferences.iconPoints(fullscreen: model.isFullscreen)))
-                        if model.preferences.showNames {
-                            Text(app.name).font(model.applicationLabelFont).foregroundStyle(model.applicationLabelColor)
-                                .lineLimit(1)
-                        }
-                    }.frame(maxWidth: .infinity)
-                }
-            }.padding(18).frame(maxWidth: .infinity, minHeight: 142)
-                .background {
-                    ZStack {
-                        if model.preferences.backgroundStyle == .glass { VisualEffectBackground() }
-                        Color(nsColor: .windowBackgroundColor).opacity(model.preferences.backgroundStyle == .glass ? 1 - model.preferences.backgroundTransparency : 1)
-                    }.opacity(reduceTransparency ? 1 : 1 - model.preferences.backgroundTransparency)
-                }
-                .clipShape(RoundedRectangle(cornerRadius: 14))
-                .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.primary.opacity(0.10)))
+        let preferences = model.preferences
+        let iconSize = preferences.iconPoints(fullscreen: model.isFullscreen) * 0.72
+        let clearBackdrop = preferences.backgroundTransparency > 0.7 && !reduceTransparency
+        HStack(spacing: 10) {
+            ForEach(Array(model.apps.prefix(3))) { app in
+                VStack(spacing: 6) {
+                    PreviewAppIcon(model: model, app: app)
+                        .frame(width: iconSize, height: iconSize)
+                    if preferences.showNames {
+                        Text(app.name).font(model.applicationLabelFont).foregroundStyle(model.applicationLabelColor)
+                            .lineLimit(1)
+                            .shadow(color: clearBackdrop
+                                    ? LauncherModel.applicationLabelShadow(color: preferences.labelColor, hex: preferences.labelColorHex) : .clear,
+                                    radius: 1, y: 1)
+                    }
+                }.frame(maxWidth: .infinity)
+            }
         }
+        .padding(12).frame(maxWidth: .infinity, minHeight: 120)
+        .background {
+            ZStack {
+                if preferences.backgroundStyle == .glass && !reduceTransparency { VisualEffectBackground() }
+                Color(nsColor: .windowBackgroundColor)
+                    .opacity(preferences.backgroundStyle == .glass && !reduceTransparency ? 1 - preferences.backgroundTransparency : 1)
+            }.opacity(reduceTransparency ? 1 : 1 - preferences.backgroundTransparency)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.primary.opacity(0.10)))
     }
 }

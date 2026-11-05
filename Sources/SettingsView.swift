@@ -225,28 +225,26 @@ struct SettingsView: View {
                 note("下载应用优先显示在前，系统应用排在末尾；网格分页与连续滚动都生效，保留手动布局与文件夹。")
             }
         case .appearance:
-            AppearanceLivePreview(model: model)
-            card("背景", icon: "rectangle.on.rectangle") {
+            card("实时预览", icon: "eye") {
+                AppearanceLivePreview(model: model)
+                percentageRow("图标大小", key: \.iconScalePercent, range: 50...150, step: 5, multiplier: 1)
+                percentageRow("文字大小", key: \.textScalePercent, range: 80...140, step: 5, multiplier: 1)
+                percentageRow("背景透明度", key: \.backgroundTransparency, range: 0...1, step: 0.05, multiplier: 100)
+
                 Picker(model.text("背景样式"), selection: preference(\.backgroundStyle)) {
                     ForEach(LauncherBackground.allCases, id: \.self) { Text(model.text($0.title)).tag($0) }
                 }.pickerStyle(.segmented).labelsHidden().accessibilityLabel(model.text("背景样式"))
-                Group {
-                    HStack {
-                        Text(model.text("背景透明度"))
-                        Slider(value: preference(\.backgroundTransparency), in: 0...1, step: 0.05)
-                            .frame(maxWidth: 240).accessibilityLabel(model.text("背景透明度"))
-                        Text("\(Int((model.preferences.backgroundTransparency * 100).rounded()))%")
-                            .monospacedDigit().frame(width: 45)
-                    }
-                    note("纯色与玻璃均支持 0–100% 透明度，设置按钮保持独立对比度。系统开启减少透明度时使用不透明背景。")
+                Picker(model.text("文字颜色"), selection: preference(\.labelColor)) {
+                    ForEach(LauncherLabelColor.allCases, id: \.self) { Text(model.text($0.title)).tag($0) }
                 }
-            }
-            card("文字与图标", icon: "textformat.size") {
-                HStack {
-                    Text(model.text("图标大小")); Spacer(); Text("\(Int(model.preferences.iconScalePercent.rounded()))%")
-                }
-                HStack {
-                    Text(model.text("文字大小")); Spacer(); Text("\(Int(model.preferences.textScalePercent.rounded()))%")
+                if model.preferences.labelColor == .custom {
+                    ColorPicker(model.text("自定义颜色"), selection: Binding(
+                        get: { LauncherModel.color(hex: model.preferences.labelColorHex) },
+                        set: { value in
+                            guard let rgb = NSColor(value).usingColorSpace(.deviceRGB) else { return }
+                            let hex = String(format: "#%02X%02X%02X", Int((rgb.redComponent * 255).rounded()), Int((rgb.greenComponent * 255).rounded()), Int((rgb.blueComponent * 255).rounded()))
+                            model.updatePreferences { $0.labelColorHex = hex }
+                        }), supportsOpacity: false)
                 }
                 Button(model.text("调整大小与对比…")) { model.presentingAppearancePreview = true; scalePreview = true }
                 switchRow("显示应用名称", key: \.showNames)
@@ -264,22 +262,6 @@ struct SettingsView: View {
                 Picker(model.text("字重"), selection: preference(\.labelWeight)) {
                     ForEach(LauncherLabelWeight.allCases, id: \.self) { Text(model.text($0.title)).tag($0) }
                 }
-                Picker(model.text("文字颜色"), selection: preference(\.labelColor)) {
-                    ForEach(LauncherLabelColor.allCases, id: \.self) { Text(model.text($0.title)).tag($0) }
-                }
-                if model.preferences.labelColor == .custom {
-                    ColorPicker(model.text("自定义颜色"), selection: Binding(
-                        get: { LauncherModel.color(hex: model.preferences.labelColorHex) },
-                        set: { value in
-                            guard let rgb = NSColor(value).usingColorSpace(.deviceRGB) else { return }
-                            let hex = String(format: "#%02X%02X%02X", Int((rgb.redComponent * 255).rounded()), Int((rgb.greenComponent * 255).rounded()), Int((rgb.blueComponent * 255).rounded()))
-                            model.updatePreferences { $0.labelColorHex = hex }
-                        }), supportsOpacity: false)
-                }
-                Text(model.text("应用名称预览：Aplo 軟體"))
-                    .font(model.applicationLabelFont).foregroundStyle(model.applicationLabelColor)
-                    .frame(maxWidth: .infinity, minHeight: 42)
-                    .background(Color.gray.opacity(0.3), in: RoundedRectangle(cornerRadius: 9))
                 note("名称不带背景块。字体只影响应用与文件夹名称，繁体中文在通用的语言选项中选择。")
             }
             card("顶部标识", icon: "app.badge") {
@@ -299,6 +281,8 @@ struct SettingsView: View {
             card("外观与行为", icon: "sparkles") {
                 switchRow("图标悬停放大", key: \.magnificationEnabled)
                 switchRow("界面动画", key: \.animationsEnabled)
+                switchRow("整理时轻晃图标", key: \.organizeWiggleEnabled)
+                    .disabled(!model.preferences.animationsEnabled)
                 note("开启时显示面板淡入与悬停过渡，遵循系统减少动态效果设置。")
                 Divider()
                 switchRow("窗口阴影", key: \.windowShadowEnabled)
@@ -488,6 +472,7 @@ struct SettingsView: View {
                 p.appearance = defaults.appearance; p.showNames = defaults.showNames
                 p.brandNamePercent = defaults.brandNamePercent; p.colorVision = defaults.colorVision
                 p.magnificationEnabled = defaults.magnificationEnabled; p.animationsEnabled = defaults.animationsEnabled
+                p.organizeWiggleEnabled = defaults.organizeWiggleEnabled
                 p.windowShadowEnabled = defaults.windowShadowEnabled
             case .shortcuts:
                 p.f4ShortcutEnabled = defaults.f4ShortcutEnabled; p.hotCorner = "off"; p.folderNavigation = "inherit"
@@ -503,18 +488,34 @@ struct SettingsView: View {
         }
     }
 
+    private func percentageRow(_ title: String, key: WritableKeyPath<LauncherPreferences, Double>,
+                               range: ClosedRange<Double>, step: Double, multiplier: Double) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(model.text(title))
+                Spacer()
+                Text("\(Int((model.preferences[keyPath: key] * multiplier).rounded()))%")
+                    .monospacedDigit().foregroundStyle(.secondary)
+            }
+            Slider(value: preference(key), in: range, step: step)
+                .accessibilityLabel(model.text(title))
+        }
+    }
+
     private func gridControls(_ title: String, columns: WritableKeyPath<LauncherPreferences, Int>, rows: WritableKeyPath<LauncherPreferences, Int>) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(model.text(title)).fontWeight(.medium)
-            HStack {
-                Picker(model.text("列数"), selection: preference(columns)) {
-                    Text(model.text("自动")).tag(0)
-                    ForEach(2...12, id: \.self) { Text(String($0)).tag($0) }
-                }
-                Picker(model.text("横向／分页行数"), selection: preference(rows)) {
-                    Text(model.text("自动")).tag(0)
-                    ForEach(1...8, id: \.self) { Text(String($0)).tag($0) }
-                }
+            let columnPicker = Picker(model.text("列数"), selection: preference(columns)) {
+                Text(model.text("自动")).tag(0)
+                ForEach(2...12, id: \.self) { Text(String($0)).tag($0) }
+            }
+            let rowPicker = Picker(model.text("横向／分页行数"), selection: preference(rows)) {
+                Text(model.text("自动")).tag(0)
+                ForEach(1...8, id: \.self) { Text(String($0)).tag($0) }
+            }
+            ViewThatFits(in: .horizontal) {
+                HStack { columnPicker; rowPicker }.fixedSize(horizontal: true, vertical: false)
+                VStack(alignment: .leading, spacing: 6) { columnPicker; rowPicker }
             }
         }
     }

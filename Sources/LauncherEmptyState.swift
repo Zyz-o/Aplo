@@ -12,6 +12,9 @@ struct LauncherEmptyState: View {
             Text(model.text(model.initialDiscoveryPending ? "正在查找应用…" : model.inlineResult != nil ? "结果显示在上方" : model.isSearching ? "没有匹配的应用" : "没有找到已安装的应用"))
                 .font(.system(size: model.preferences.textPoints(17), weight: .semibold))
             if !model.initialDiscoveryPending && model.inlineResult == nil {
+                if model.searchCategory != nil {
+                    Button(model.text("清除分类筛选")) { model.selectSearchCategory(nil) }
+                }
                 Text(model.text(model.isSearching ? "换个名称、拼音或首字母试试。" : "安装应用后会自动出现，也可以手动刷新。"))
                     .font(.system(size: model.preferences.textPoints(12))).foregroundStyle(.secondary).multilineTextAlignment(.center)
                 HStack(spacing: 8) {
