@@ -243,6 +243,27 @@ import XCTest
         model.undoOrganization(); XCTAssertEqual(model.layout, before)
     }
 
+    func testDraggingEntersEditingWithoutStartingTheOrganizeJiggle() throws {
+        let (model, _, cleanup) = try fixture(); defer { cleanup() }
+        // A plain drag must enable drop targets without making every icon wobble.
+        model.beginInteractiveDrag("app:test.00")
+        XCTAssertTrue(model.editing)
+        XCTAssertFalse(model.organizesExplicitly, "an implicit drag must not start the edit jiggle")
+        model.endDrag()
+        XCTAssertTrue(model.editing)
+        XCTAssertFalse(model.organizesExplicitly)
+        // Choosing organize mode deliberately does start it.
+        model.toggleEditing()
+        XCTAssertFalse(model.editing)
+        XCTAssertFalse(model.organizesExplicitly)
+        model.toggleEditing()
+        XCTAssertTrue(model.editing)
+        XCTAssertTrue(model.organizesExplicitly, "the Arrange menu toggle must start the edit jiggle")
+        model.toggleEditing()
+        XCTAssertFalse(model.editing)
+        XCTAssertFalse(model.organizesExplicitly, "leaving organize mode must clear the jiggle state")
+    }
+
     func testOrganizeDownloadedFirstAndSortByNameAreUndoable() throws {
         let (model, _, cleanup) = try fixture(); defer { cleanup() }
         let before = model.layout

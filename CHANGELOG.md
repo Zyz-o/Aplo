@@ -1,3 +1,12 @@
+# 3.16.9 — 2026-11-05
+
+- Moving a single app no longer starts the organize jiggle on every other icon. The wobble now appears only after entering organize mode deliberately, while dragging still enables drop targets.
+- The jiggle phase is derived from each item's identifier, so reordering no longer restarts the wobble with a new rhythm.
+
+<!-- summary-zh -->
+- 移动单个应用不再让其他图标一起抖动；只有主动进入「整理」模式才会出现抖动，拖拽本身仍照常启用投放目标。
+- 抖动相位改为按应用标识计算，排序后不会突然换节奏重新抖一次。
+
 # 3.16.8 — 2026-11-05
 
 - Keyboard selection now draws a crisp inner ring plus a soft outer halo, so it can never be confused with the mouse hover lift.

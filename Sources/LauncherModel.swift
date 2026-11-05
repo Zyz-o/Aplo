@@ -139,7 +139,11 @@ final class LauncherModel: ObservableObject {
     @Published var focusGeneration = 0
     @Published var shortcutAvailable = true
     @Published var f4ShortcutAvailable = true
-    @Published var editing = false { didSet { if !editing { multiSelectionActive = false; selectedItemIDs = [] } } }
+    @Published var editing = false { didSet { if !editing { multiSelectionActive = false; selectedItemIDs = []; organizesExplicitly = false } } }
+    /// True when organize mode was entered deliberately (Arrange menu, keyboard, context
+    /// action). Dragging an icon also enables `editing` so drop targets work, but that
+    /// path must not start the jiggle animation on every other icon.
+    @Published private(set) var organizesExplicitly = false
     @Published var multiSelectionActive = false
     @Published private(set) var selectedItemIDs: Set<String> = []
     @Published var showingPageOrganizer = false
@@ -663,7 +667,7 @@ final class LauncherModel: ObservableObject {
             if isFullscreen { $0.arrangement = arrangement } else { $0.compactArrangement = arrangement }
             $0.automaticCategories = false
         }
-        editing = true
+        beginEditing()
     }
     func freePositionKey(_ id: String) -> String {
         (openFolderID ?? "root") + ":" + preferences.pagingDirection.rawValue + ":" + id
@@ -750,9 +754,14 @@ final class LauncherModel: ObservableObject {
             }
         }
     }
+    /// Enter organize mode on purpose. Only this path may start the edit jiggle.
+    func beginEditing() {
+        editing = true
+        organizesExplicitly = true
+    }
     func toggleEditing() {
         guard !preferences.automaticCategories else { openSettings(); return }
-        editing.toggle()
+        if editing { editing = false } else { beginEditing() }
         if isSearching { query = "" }
         draggingID = nil
         clearDropTarget()
@@ -794,7 +803,7 @@ final class LauncherModel: ObservableObject {
             }
         }
         guard commit(updated) else { return }
-        editing = true
+        beginEditing()
         beginRename(folder)
     }
     func dissolve(_ folderID: String) {
@@ -1058,7 +1067,7 @@ extension LauncherModel {
     func toggleMultiSelection() {
         guard !isSearching, !showingSettings, !importInProgress else { return }
         if !multiSelectionActive {
-            chooseArrangement(.grid); editing = true; multiSelectionActive = true
+            chooseArrangement(.grid); beginEditing(); multiSelectionActive = true
         } else { multiSelectionActive = false }
         selectedItemIDs = []
     }

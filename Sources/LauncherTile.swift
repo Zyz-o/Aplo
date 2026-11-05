@@ -29,19 +29,23 @@ struct LauncherTile: View, Equatable {
     private let draggingID: String?
     private let freePlacement: Bool
     private let continuous: Bool
+    /// Jiggle only when the user deliberately opened organize mode. Dragging an icon
+    /// also sets `editing` so drop targets work, but must not start the wobble.
+    private let wigglesInEditMode: Bool
     let action: () -> Void
     init(model: LauncherModel, item: LayoutItem, index: Int, selected: Bool, action: @escaping () -> Void) {
         self.model = model; self.item = item; self.index = index; self.selected = selected; self.keyboardSelected = selected && model.keyboardSelectionActive; self.action = action
         self.displayName = model.name(for: item)
         self.accessibilityName = model.text((item.kind == .folder ? "打开文件夹 " : "打开 ") + displayName)
         self.editing = model.editing; self.draggingID = model.draggingID
+        self.wigglesInEditMode = model.editing && model.organizesExplicitly
         self.freePlacement = model.usesFreePlacement; self.continuous = model.isContinuousScrolling
         let p = model.preferences
         self.appearance = TileAppearanceKey(iconSize: min(p.iconPoints(fullscreen: model.isFullscreen), max(24, model.tileWidth - 18)), labelHeight: p.labelHeight, textScale: p.textScalePercent, showNames: p.showNames, font: p.labelFontFamily, weight: p.labelWeight, color: p.labelColor, colorHex: p.labelColorHex, transparentLabels: p.backgroundTransparency > 0.7, vision: p.colorVision, magnify: p.magnificationEnabled, animate: p.animationsEnabled)
         self.dragFeedback = model.dragFeedback(for: item.id)
     }
     nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
-        lhs.model === rhs.model && lhs.item == rhs.item && lhs.index == rhs.index && lhs.selected == rhs.selected && lhs.keyboardSelected == rhs.keyboardSelected && lhs.displayName == rhs.displayName && lhs.accessibilityName == rhs.accessibilityName && lhs.appearance == rhs.appearance && lhs.editing == rhs.editing && lhs.draggingID == rhs.draggingID && lhs.freePlacement == rhs.freePlacement && lhs.continuous == rhs.continuous
+        lhs.model === rhs.model && lhs.item == rhs.item && lhs.index == rhs.index && lhs.selected == rhs.selected && lhs.keyboardSelected == rhs.keyboardSelected && lhs.displayName == rhs.displayName && lhs.accessibilityName == rhs.accessibilityName && lhs.appearance == rhs.appearance && lhs.editing == rhs.editing && lhs.draggingID == rhs.draggingID && lhs.freePlacement == rhs.freePlacement && lhs.continuous == rhs.continuous && lhs.wigglesInEditMode == rhs.wigglesInEditMode
     }
     private var iconSize: CGFloat { appearance.iconSize }
     @State private var hovered = false
@@ -117,7 +121,7 @@ struct LauncherTile: View, Equatable {
             VStack(spacing: 4) {
                 DockMagnifiedIcon(identity: iconIdentity, image: nativeIcon, enabled: p.magnify && !model.editing && dragging == nil && !reduceMotion,
                                   animated: p.animate && !reduceMotion,
-                                  wiggling: editing && draggingID == nil && p.animate && !reduceMotion) {
+                                  wiggling: wigglesInEditMode && draggingID == nil && p.animate && !reduceMotion) {
                 Group {
                 if item.kind == .folder || previewChildren != nil {
                     ZStack {

@@ -136,7 +136,7 @@ struct LauncherView: View {
                         Button(model.text("随机打乱")) { model.shuffleLayout() }
                         Divider()
                         Button(model.text(model.multiSelectionActive ? "结束多选" : "多选应用")) { model.toggleMultiSelection() }.disabled(model.isSearching || model.importInProgress)
-                        Button(model.text("页面顺序…")) { model.editing = true; model.showingPageOrganizer = true }
+                        Button(model.text("页面顺序…")) { model.beginEditing(); model.showingPageOrganizer = true }
                             .disabled(model.preferences.automaticCategories || model.openFolderID != nil || model.customGridEnabled)
                         Divider()
                         Button(model.text(model.editing ? "完成整理" : "手动整理")) { model.toggleEditing() }

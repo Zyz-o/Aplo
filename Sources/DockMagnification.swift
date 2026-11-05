@@ -122,6 +122,10 @@ import QuartzCore
 
 class MagnificationIconView: NSView {
     var applicationID: String?
+    /// Stable per-item seed for the jiggle phase. Deriving it from the view identity
+    /// made the wobble restart with a new rhythm whenever tiles were rebuilt after a
+    /// drop, which read as a sudden shake.
+    var wiggleSeed = ""
     func setWiggling(_ value: Bool) {
         guard let layer else { return }
         if !value { layer.removeAnimation(forKey: "aplo.editWiggle"); return }
@@ -129,7 +133,7 @@ class MagnificationIconView: NSView {
         let animation = CAKeyframeAnimation(keyPath: "transform.rotation.z")
         animation.values = [-0.018, 0.018, -0.018]
         animation.duration = 0.30; animation.repeatCount = .infinity
-        animation.beginTime = CACurrentMediaTime() + Double(abs(ObjectIdentifier(self).hashValue % 9)) * 0.012
+        animation.beginTime = CACurrentMediaTime() + Double(abs((wiggleSeed.isEmpty ? applicationID : wiggleSeed)?.hashValue ?? 0) % 9) * 0.012
         layer.add(animation, forKey: "aplo.editWiggle")
     }
     var enabled = true { didSet { if !enabled { setScale(1) } } }
@@ -218,6 +222,7 @@ struct DockMagnifiedIcon<Content: View>: NSViewRepresentable {
             view.identity = identity
         }
         view.applicationID = identity.item.appID
+        view.wiggleSeed = identity.item.id
         view.enabled = enabled; view.animated = animated; view.setWiggling(wiggling)
     }
 }
