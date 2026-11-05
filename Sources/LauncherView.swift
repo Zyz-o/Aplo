@@ -30,12 +30,10 @@ struct LauncherView: View {
 
     var body: some View {
         Group {
-            if model.showingSettings { SettingsView(model: model).frame(maxWidth: 1000, maxHeight: 720)
-                    .clipShape(RoundedRectangle(cornerRadius: AploVisual.windowRadius))
-                    .overlay(RoundedRectangle(cornerRadius: AploVisual.windowRadius).strokeBorder(.primary.opacity(0.10))) }
+            if model.showingSettings { Color.clear }
             else { launcherContent }
         }
-        .padding(model.showingSettings ? (model.isFullscreen ? 24 : 0) : LauncherGeometry.contentInset(fullscreen: model.isFullscreen))
+        .padding(LauncherGeometry.contentInset(fullscreen: model.isFullscreen))
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background {
             ZStack {

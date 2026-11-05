@@ -32,13 +32,13 @@ extension AppDelegate {
         guard NSApp.activationPolicy() != target else { return }
         // Changing Dock participation may briefly deactivate the app. Preserve Settings.
         updatingEntryVisibility = true
-        let wasVisible = panel.isVisible && !panel.isMiniaturized
+        let wasVisible = interactionWindow.isVisible && !interactionWindow.isMiniaturized
         panel.hidesOnDeactivate = false
         NSApp.setActivationPolicy(target)
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             if wasVisible {
-                self.panel.makeKeyAndOrderFront(nil)
+                self.interactionWindow.makeKeyAndOrderFront(nil)
                 NSApp.activate(ignoringOtherApps: true)
             }
             self.updatingEntryVisibility = false
@@ -47,6 +47,7 @@ extension AppDelegate {
     }
 
     func applyAppearance() {
+        defer { settingsController?.window?.appearance = panel.appearance }
         if CommandLine.arguments.contains("--appearance-dark") { panel.appearance = NSAppearance(named: .darkAqua); return }
         if CommandLine.arguments.contains("--appearance-light") { panel.appearance = NSAppearance(named: .aqua); return }
         switch model.preferences.appearance {
@@ -201,6 +202,7 @@ extension AppDelegate {
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         trace("reopen visible=\(panel.isVisible) flag=\(flag)")
+        if model.showingSettings { updateSettingsWindow(); return true }
         if !panel.isVisible || panel.isMiniaturized { showPanel() }
         else { panel.makeKeyAndOrderFront(nil) }
         return true

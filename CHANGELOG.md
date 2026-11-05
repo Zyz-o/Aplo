@@ -1,3 +1,16 @@
+# 3.17.0 — 2026-11-05
+
+- Settings now opens in a separate resizable window and remembers its position, size, and last category.
+- Reorganize settings into seven categories, with direct search results, scroll-to-setting highlights, and responsive controls.
+- Pin appearance previews above controls in compact windows and beside them in wide windows; move page resets into the page menu.
+- Keep keyboard recording, text undo, backup dialogs, and appearance sheets attached to the active settings window.
+
+<!-- summary-zh -->
+- 设置使用独立窗口，记住大小、位置和上次分类。
+- 重新整理为七个分类；搜索可跳转到设置分组或具体开关，短暂高亮目标。
+- 外观预览在窄窗顶部、宽窗右侧显示；恢复本页默认收进页面菜单，说明实际影响范围。
+- 录制快捷键、文字撤销和备份弹窗跟随设置窗口，保留已有布局与偏好。
+
 # 3.16.9 — 2026-11-05
 
 - Moving a single app no longer starts the organize jiggle on every other icon. The wobble now appears only after entering organize mode deliberately, while dragging still enables drop targets.

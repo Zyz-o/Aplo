@@ -37,6 +37,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     var hotKey: EventHotKeyRef?
     var alternateHotKey: EventHotKeyRef?
     var hotKeyHandler: EventHandlerRef?
+    var settingsController: SettingsWindowController?
     var previousApplication: NSRunningApplication?
     var previousPresentation: NSApplication.PresentationOptions?
     var presentingSystemDialog = false
@@ -171,11 +172,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
 
     var editingText: Bool {
-        (model.searchExpanded || model.renamingFolderID != nil || model.showingSettings) && panel.firstResponder is NSTextView
+        (model.searchExpanded || model.renamingFolderID != nil || model.showingSettings) && interactionWindow.firstResponder is NSTextView
     }
     var textUndoManager: UndoManager? {
         guard editingText,
-              let editor = panel.firstResponder as? NSTextView else { return nil }
+              let editor = interactionWindow.firstResponder as? NSTextView else { return nil }
         return editor.undoManager
     }
 
@@ -186,7 +187,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         model.onAppearancePreviewChanged = { [weak self] in
             guard let self else { return }
             self.panel.hidesOnDeactivate = !self.preview && !self.updatingEntryVisibility && self.model.preferences.dismissStyle == .outsideClick && !self.model.presentingAppearancePreview
-            if !self.model.presentingAppearancePreview { self.panel.makeKeyAndOrderFront(nil) }
+            if !self.model.presentingAppearancePreview { self.interactionWindow.makeKeyAndOrderFront(nil) }
         }
         model.onRestoreHistory = { [weak self] url in self?.startImport(url, legacy: false) }
         model.onNavigate = { [weak self] in
@@ -194,9 +195,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             SoundManager.shared.play(.navigation)
         }
         model.onSettingsVisibilityChanged = { [weak self] in
-            guard let self, self.panel.isVisible else { return }
-            self.resetPageMotion()
-            self.applyDisplayFrame(screen: self.panel.screen ?? NSScreen.main)
+            self?.updateSettingsWindow()
         }
         model.onPageRequested = { [weak self] target in
             guard let self else { return }
@@ -216,6 +215,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 self.model.pageMotion.axis = self.model.navigationDirection == .vertical ? .vertical : .horizontal
             }
             if changes.contains(.menus) {
+                self.settingsController?.window?.title = "Aplo · " + self.model.text("设置")
                 self.configureMainMenu()
                 self.updateStatusMenu()
             }
@@ -264,7 +264,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     @objc func openFromMenu() { showPanel() }
     @objc func refreshApplications() { model.requestRefresh(resetSearch: false) }
-    @objc func openSettingsFromMenu() { showPanel(); model.openSettings() }
+    @objc func openSettingsFromMenu() {
+        if model.showingSettings { updateSettingsWindow() } else { model.openSettings() }
+    }
     @objc func quitApplication() { NSApp.terminate(nil) }
 
     func togglePanel() {

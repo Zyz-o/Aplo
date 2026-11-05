@@ -21,8 +21,8 @@ extension AppDelegate {
 
     func configureKeyboard() {
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .leftMouseDown]) { [weak self] event in
-            guard let self, self.panel.isVisible, self.panel.isKeyWindow, NSApp.modalWindow == nil,
-                  !self.presentingSystemDialog, self.panel.attachedSheet == nil else { return event }
+            guard let self, self.interactionWindow.isVisible, self.interactionWindow.isKeyWindow, NSApp.modalWindow == nil,
+                  !self.presentingSystemDialog, self.interactionWindow.attachedSheet == nil else { return event }
             if self.model.presentingAppearancePreview { return event }
             if event.type == .leftMouseDown { self.model.keyboardSelectionActive = false; return event }
             if self.model.draggingID != nil { return event } // Let AppKit finish or cancel its native drag session.
@@ -44,7 +44,7 @@ extension AppDelegate {
                 return nil
             }
             // Let the input method finish composition before treating a key as navigation.
-            if let editor = self.panel.firstResponder as? NSTextView, editor.hasMarkedText() { return event }
+            if let editor = self.interactionWindow.firstResponder as? NSTextView, editor.hasMarkedText() { return event }
             let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
             if Int(event.keyCode) == kVK_ANSI_F && modifiers.intersection([.command, .control, .option, .shift]) == [.command, .control] {
                 self.toggleDisplayMode()

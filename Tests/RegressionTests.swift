@@ -1,5 +1,6 @@
 #if SWIFT_PACKAGE
 import XCTest
+import AppKit
 @testable import Aplo
 
 @MainActor final class RegressionTests: XCTestCase {
@@ -24,6 +25,29 @@ import XCTest
             model.flushPreferences(); defaults.removePersistentDomain(forName: domain)
             try? FileManager.default.removeItem(at: root)
         })
+    }
+
+    func testIndependentSettingsWindowClosesWithoutLosingPreferences() async throws {
+        let (model, defaults, cleanup) = fixture()
+        defer { cleanup() }
+        _ = NSApplication.shared
+        let originalLayout = model.layout
+        let controller = SettingsWindowController(model: model, defaults: defaults)
+        let window = try XCTUnwrap(controller.window)
+        model.openSettings()
+        model.updatePreferences { $0.textScalePercent = 140 }
+        model.beginRecording()
+        window.setFrame(NSRect(x: 30, y: 40, width: 900, height: 650), display: false)
+        controller.windowDidResize(Notification(name: NSWindow.didResizeNotification, object: window))
+        XCTAssertFalse(controller.windowShouldClose(window))
+        XCTAssertFalse(model.showingSettings)
+        XCTAssertFalse(model.recordingShortcut)
+        XCTAssertEqual(model.preferences.textScalePercent, 140)
+        XCTAssertEqual(model.layout, originalLayout)
+        XCTAssertEqual(NSRectFromString(try XCTUnwrap(defaults.string(forKey: "aplo.settingsWindow.frame"))).size,
+                       NSSize(width: 900, height: 650))
+        let restored = SettingsWindowController(model: model, defaults: defaults)
+        XCTAssertEqual(restored.window?.frame.size, window.frame.size)
     }
 
     func testSliderDiffAndPersistence() async throws {

@@ -19,11 +19,11 @@ extension AppDelegate {
     func endDialog() {
         presentingSystemDialog = false
         panel.hidesOnDeactivate = !preview && model.preferences.dismissStyle == .outsideClick
-        panel.makeKeyAndOrderFront(nil)
+        interactionWindow.makeKeyAndOrderFront(nil)
     }
 
     func confirmSystemCommand(_ command: SystemCommand) {
-        guard !presentingSystemDialog, panel.attachedSheet == nil else { return }
+        guard !presentingSystemDialog, interactionWindow.attachedSheet == nil else { return }
         let alert = NSAlert(); alert.messageText = model.text(command.title)
         alert.informativeText = model.text(command.available ? command.explanation : "当前系统没有可用的锁屏工具。请按 Control＋Command＋Q 锁屏；Aplo 不会代为关闭显示器。")
         alert.alertStyle = command == .trash ? .warning : .informational
@@ -34,7 +34,7 @@ extension AppDelegate {
             action.hasDestructiveAction = command == .trash
         }
         beginDialog()
-        alert.beginSheetModal(for: panel) { [weak self] response in
+        alert.beginSheetModal(for: interactionWindow) { [weak self] response in
             guard let self else { return }
             self.endDialog()
             guard response == .alertSecondButtonReturn, command.available else { return }
@@ -48,7 +48,7 @@ extension AppDelegate {
     }
 
     func confirmTrashApplication(_ app: InstalledApp) {
-        guard !presentingSystemDialog, panel.attachedSheet == nil, !app.isSystemApplication,
+        guard !presentingSystemDialog, interactionWindow.attachedSheet == nil, !app.isSystemApplication,
               app.bundleIdentifier != AppCatalog.ownBundleIdentifier else { return }
         let alert = NSAlert(); alert.messageText = model.text("移至废纸篓…")
         alert.informativeText = "“\(app.name)”\n" + model.text("仅移动应用包，不删除个人数据。原分组与位置会按应用扫描结果更新。")
@@ -56,7 +56,7 @@ extension AppDelegate {
         let cancel = alert.addButton(withTitle: model.text("取消")); cancel.keyEquivalent = "\r"
         let remove = alert.addButton(withTitle: model.text("移至废纸篓")); remove.keyEquivalent = ""; remove.hasDestructiveAction = true
         beginDialog()
-        alert.beginSheetModal(for: panel) { [weak self] response in
+        alert.beginSheetModal(for: interactionWindow) { [weak self] response in
             guard let self else { return }; self.endDialog()
             guard response == .alertSecondButtonReturn else { return }
             Task {
@@ -74,7 +74,7 @@ extension AppDelegate {
         dialog.nameFieldStringValue = model.preferences.language.isEnglish ? "Aplo-layout.json" : "Aplo布局.json"
         dialog.allowedContentTypes = [.json]
         beginDialog()
-        dialog.beginSheetModal(for: panel) { [weak self] response in
+        dialog.beginSheetModal(for: interactionWindow) { [weak self] response in
             guard let self else { return }
             defer { self.endDialog() }
             guard response == .OK, let url = dialog.url else { return }
@@ -90,7 +90,7 @@ extension AppDelegate {
         dialog.canChooseDirectories = false
         dialog.allowsMultipleSelection = false
         beginDialog()
-        dialog.beginSheetModal(for: panel) { [weak self] response in
+        dialog.beginSheetModal(for: interactionWindow) { [weak self] response in
             guard let self else { return }
             defer { self.endDialog() }
             guard response == .OK, let url = dialog.url else { return }
@@ -105,7 +105,7 @@ extension AppDelegate {
         dialog.canChooseDirectories = false
         dialog.allowsMultipleSelection = false
         beginDialog()
-        dialog.beginSheetModal(for: panel) { [weak self] response in
+        dialog.beginSheetModal(for: interactionWindow) { [weak self] response in
             guard let self else { return }
             defer { self.endDialog() }
             guard response == .OK, let url = dialog.url else { return }
