@@ -21,6 +21,7 @@ enum AppStrings {
         "备份与恢复": "Backup & Restore",
         "更新与关于": "Updates & About",
         "页面操作": "Page Actions",
+        "布局预览": "Layout Preview",
         "背景与文字": "Background & Text",
         "重置入口、工具栏、收起方式、窗口固定、启动后收起、程序坞和语言。": "Resets access points, toolbar, dismissal, desktop pinning, hide after launch, Dock, and language.",
         "重置图标与文字大小、网格行列数。保留手动排列与文件夹。": "Resets icon and text sizes and grid dimensions. Keeps your arrangement and folders.",

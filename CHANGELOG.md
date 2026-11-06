@@ -1,3 +1,12 @@
+# 3.17.1 — 2026-11-06
+
+- Compact the settings sidebar and use lighter groups for everyday controls.
+- Preview icon size, label wrapping, and column density for compact and fullscreen grids directly in Layout. Keep the side-by-side size comparison there as well.
+
+<!-- summary-zh -->
+- 缩小设置侧栏，普通选项改用标题和分隔线分组。
+- 布局页可直接预览小窗口和全屏的图标尺寸、名称换行与列数，大小对比也移到布局页。
+
 # 3.17.0 — 2026-11-05
 
 - Settings now opens in a separate resizable window and remembers its position, size, and last category.

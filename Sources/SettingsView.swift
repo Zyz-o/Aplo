@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-private enum SettingsCategory: String, CaseIterable {
+enum SettingsCategory: String, CaseIterable {
     case general, appearance, layout, shortcuts, sound, hidden, backup, updates, about
     static var allCases: [Self] { [.general, .appearance, .layout, .shortcuts, .hidden, .backup, .updates] }
     var title: String {
@@ -30,19 +30,7 @@ private enum SettingsCategory: String, CaseIterable {
         case .about: return "info.circle"
         }
     }
-    var color: Color {
-        switch self {
-        case .layout: return .orange
-        case .general: return .blue
-        case .appearance: return .purple
-        case .shortcuts: return .cyan
-        case .sound: return .orange
-        case .hidden: return .indigo
-        case .backup: return .green
-        case .updates: return .teal
-        case .about: return .gray
-        }
-    }
+
 }
 
 @MainActor private enum ApplicationFontCatalog {
@@ -59,11 +47,6 @@ struct SettingsView: View {
     @State private var highlightTask: Task<Void, Never>?
     @State private var previewExpanded = true
     @State private var settingsWidth: CGFloat = 960
-    private var sidebarWidth: CGFloat {
-        let font = NSFont.systemFont(ofSize: model.preferences.textPoints(13), weight: .semibold)
-        let longest = SettingsCategory.allCases.map { (model.text($0.title) as NSString).size(withAttributes: [.font: font]).width }.max() ?? 100
-        return max(190, min(300, ceil(longest) + 122))
-    }
     private struct SearchResult {
         let title: String
         let category: SettingsCategory
@@ -84,6 +67,8 @@ struct SettingsView: View {
             SearchResult(title: "顶部标识", category: .appearance, section: "顶部标识"),
             SearchResult(title: "色盲友好", category: .appearance, section: "色盲友好"),
             SearchResult(title: "大小", category: .layout, section: "大小"),
+            SearchResult(title: "布局预览", category: .layout, section: "大小"),
+            SearchResult(title: "调整大小与对比…", category: .layout, section: "大小"),
             SearchResult(title: "图标大小", category: .layout, section: "图标大小"),
             SearchResult(title: "文字大小", category: .layout, section: "文字大小"),
             SearchResult(title: "移动与排列", category: .layout, section: "移动与排列"),
@@ -121,7 +106,6 @@ struct SettingsView: View {
         ].filter { ($0.title + " " + model.text($0.title)).localizedCaseInsensitiveContains(query) }
     }
 
-    private var matchingCategories: [SettingsCategory] { SettingsCategory.allCases }
     init(model: LauncherModel) {
         self.model = model
         _category = State(initialValue: Self.restoredCategory(model.lastSettingsCategory))
@@ -142,7 +126,7 @@ struct SettingsView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            sidebar
+            SettingsSidebar(model: model, appIcon: appIcon, category: $category, query: $settingsQuery)
             Divider()
             VStack(alignment: .leading, spacing: 18) {
                 HStack {
@@ -232,45 +216,6 @@ struct SettingsView: View {
             }
     }
 
-    private var sidebar: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HStack(spacing: 10) {
-                Image(nsImage: appIcon).resizable().frame(width: 40, height: 40)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Aplo").font(.system(size: model.preferences.textPoints(20), weight: .semibold))
-                    Text(model.text("版本 \(version)")).font(.system(size: model.preferences.textPoints(11))).foregroundStyle(.secondary)
-                }
-            }.padding(.horizontal, 6).padding(.top, 8).padding(.bottom, 6)
-            TextField(model.text("搜索设置"), text: $settingsQuery).textFieldStyle(.roundedBorder)
-            ScrollView {
-              VStack(spacing: 5) {
-                ForEach(matchingCategories, id: \.self) { section in
-                    Button {
-                        if model.recordingShortcut { model.cancelRecording() }
-                        category = section
-                    } label: {
-                        HStack(spacing: 10) {
-                            Image(systemName: section.icon).font(.system(size: model.preferences.textPoints(14), weight: .semibold))
-                                .foregroundStyle(model.preferences.colorVision == .standard ? Color.white : Color(nsColor: .windowBackgroundColor)).frame(width: 28, height: 28)
-                                .background((model.preferences.colorVision == .standard ? section.color : model.accentColor).gradient, in: RoundedRectangle(cornerRadius: 8))
-                            Text(model.text(section.title)).lineLimit(1).fixedSize(horizontal: true, vertical: false).layoutPriority(1).font(.system(size: model.preferences.textPoints(13), weight: category == section ? .semibold : .regular))
-                            Spacer(minLength: 0)
-                        }.padding(.horizontal, 10).padding(.vertical, 9)
-                            .background(category == section ? model.accentColor.opacity(0.16) : .clear,
-                                        in: RoundedRectangle(cornerRadius: 10))
-                            .contentShape(Rectangle())
-                    }.buttonStyle(.plain).accessibilityLabel(model.text(section.title) + " · " + model.text("设置"))
-                        .accessibilityAddTraits(category == section ? .isSelected : [])
-                }
-              }
-              if matchingCategories.isEmpty { Text(model.text("没有匹配的设置")).foregroundStyle(.secondary).padding(.top, 12) }
-            }.scrollIndicators(.hidden)
-            Spacer(minLength: 0)
-            Text(model.text("设置自动保存")).font(.system(size: model.preferences.textPoints(11))).foregroundStyle(.tertiary).padding(.horizontal, 10)
-        }.padding(14).frame(width: sidebarWidth).frame(maxHeight: .infinity)
-            .background(.primary.opacity(0.025))
-    }
-
     @ViewBuilder private var detail: some View {
         switch category {
         case .general:
@@ -335,7 +280,6 @@ struct SettingsView: View {
                             model.updatePreferences { $0.labelColorHex = hex }
                         }), supportsOpacity: false)
                 }
-                Button(model.text("调整大小与对比…")) { model.presentingAppearancePreview = true; scalePreview = true }
                 switchRow("显示应用名称", key: \.showNames)
             }
             card("主题", icon: "circle.lefthalf.filled") {
@@ -369,8 +313,10 @@ struct SettingsView: View {
             }
         case .layout:
             card("大小", icon: "textformat.size") {
+                LayoutLivePreview(model: model)
                 percentageRow("图标大小", key: \.iconScalePercent, range: 50...150, step: 5, multiplier: 1)
                 percentageRow("文字大小", key: \.textScalePercent, range: 80...140, step: 5, multiplier: 1)
+                Button(model.text("调整大小与对比…")) { model.presentingAppearancePreview = true; scalePreview = true }
             }
             card("移动与排列", icon: "hand.draw") {
                 HStack {
@@ -505,9 +451,9 @@ struct SettingsView: View {
                 switchRow("系统应用排在最后", key: \.systemAppsLast)
                 note("下载应用优先显示在前，系统应用排在末尾；网格分页与连续滚动都生效，保留手动布局与文件夹。")
             }
-            card("管理隐藏应用", icon: "eye.slash") { HiddenApplicationsView(model: model) }
+            card("管理隐藏应用", enclosed: true, icon: "eye.slash") { HiddenApplicationsView(model: model) }
         case .backup:
-            card("备份历史", icon: "clock.arrow.circlepath") { BackupHistoryView(model: model) }
+            card("备份历史", enclosed: true, icon: "clock.arrow.circlepath") { BackupHistoryView(model: model) }
             card("布局备份", icon: "externaldrive") {
                 HStack(spacing: 12) {
                     Button(model.text("导出备份…")) { model.onExport?() }
@@ -527,7 +473,7 @@ struct SettingsView: View {
                 }
             }
         case .updates:
-            card("软件更新", icon: "arrow.down.circle") { UpdateCheckView(model: model, version: version) }
+            card("软件更新", enclosed: true, icon: "arrow.down.circle") { UpdateCheckView(model: model, version: version) }
             card("Aplo", icon: "info.circle") {
                 HStack(spacing: 14) {
                     Image(nsImage: appIcon).resizable().frame(width: 56, height: 56)
@@ -683,15 +629,9 @@ struct SettingsView: View {
             } else { Text(model.text(text)).fixedSize(horizontal: false, vertical: true) }
         }.font(.system(size: model.preferences.textPoints(11))).foregroundStyle(.secondary)
     }
-    private func card<Content: View>(_ title: String, icon: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Label(model.text(title), systemImage: icon).font(.system(size: model.preferences.textPoints(14), weight: .semibold))
-            content().font(.system(size: model.preferences.textPoints(12)))
-        }.padding(14).frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
-            .overlay(RoundedRectangle(cornerRadius: 12)
-                .strokeBorder(highlightedSection == title ? model.accentColor : .primary.opacity(0.06),
-                              lineWidth: highlightedSection == title ? 2 : 1))
-            .id(title)
+    private func card<Content: View>(_ title: String, enclosed: Bool = false, icon: String,
+                                     @ViewBuilder content: () -> Content) -> some View {
+        SettingsGroup(title: title, icon: icon, model: model, highlighted: highlightedSection == title,
+                      enclosed: enclosed, content: content())
     }
 }
