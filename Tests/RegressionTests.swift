@@ -37,7 +37,10 @@ import AppKit
         model.openSettings()
         model.updatePreferences { $0.textScalePercent = 140 }
         model.beginRecording()
-        window.setFrame(NSRect(x: 30, y: 40, width: 900, height: 650), display: false)
+        let screen = try XCTUnwrap(NSScreen.main)
+        let available = screen.visibleFrame.insetBy(dx: 40, dy: 40)
+        let testSize = NSSize(width: floor(min(900, available.width)), height: floor(min(650, available.height)))
+        window.setFrame(NSRect(origin: available.origin, size: testSize), display: false)
         controller.windowDidResize(Notification(name: NSWindow.didResizeNotification, object: window))
         XCTAssertFalse(controller.windowShouldClose(window))
         XCTAssertFalse(model.showingSettings)
@@ -45,7 +48,7 @@ import AppKit
         XCTAssertEqual(model.preferences.textScalePercent, 140)
         XCTAssertEqual(model.layout, originalLayout)
         XCTAssertEqual(NSRectFromString(try XCTUnwrap(defaults.string(forKey: "aplo.settingsWindow.frame"))).size,
-                       NSSize(width: 900, height: 650))
+                       testSize)
         let restored = SettingsWindowController(model: model, defaults: defaults)
         XCTAssertEqual(restored.window?.frame.size, window.frame.size)
     }
