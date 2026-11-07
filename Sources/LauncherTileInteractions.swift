@@ -71,7 +71,7 @@ private struct TileContextMenu: View {
                 Button(model.text("在终端中打开所在目录")) {
                     NSWorkspace.shared.open([app.url.deletingLastPathComponent()], withApplicationAt: URL(fileURLWithPath: "/System/Applications/Utilities/Terminal.app"), configuration: NSWorkspace.OpenConfiguration())
                 }
-                Button(model.text("移至废纸篓…"), role: .destructive) { model.onTrashApplication?(app) }
+                Button(model.text(model.preferences.uninstallerPath.isEmpty ? "移至废纸篓…" : "使用卸载工具…"), role: .destructive) { model.onTrashApplication?(app) }
                     .disabled(app.isSystemApplication || app.bundleIdentifier == AppCatalog.ownBundleIdentifier)
             }
         }

@@ -50,6 +50,10 @@ extension AppDelegate {
     func confirmTrashApplication(_ app: InstalledApp) {
         guard !presentingSystemDialog, interactionWindow.attachedSheet == nil, !app.isSystemApplication,
               app.bundleIdentifier != AppCatalog.ownBundleIdentifier else { return }
+        if !model.preferences.uninstallerPath.isEmpty {
+            openUninstaller(for: app)
+            return
+        }
         let alert = NSAlert(); alert.messageText = model.text("移至废纸篓…")
         alert.informativeText = "“\(app.name)”\n" + model.text("仅移动应用包，不删除个人数据。原分组与位置会按应用扫描结果更新。")
         alert.alertStyle = .warning
@@ -160,6 +164,56 @@ extension AppDelegate {
                 }
             } catch is CancellationError { self.model.message = "导入已取消，现有布局未改变。" }
             catch { self.model.message = .verbatim(error.localizedDescription) }
+        }
+    }
+}
+
+
+extension AppDelegate {
+    func chooseUninstaller() {
+        guard !presentingSystemDialog, interactionWindow.attachedSheet == nil else { return }
+        let picker = NSOpenPanel()
+        picker.title = model.text("选择卸载工具")
+        picker.allowedContentTypes = [.applicationBundle]
+        picker.directoryURL = URL(fileURLWithPath: "/Applications", isDirectory: true)
+        picker.canChooseDirectories = false
+        picker.allowsMultipleSelection = false
+        beginDialog()
+        picker.beginSheetModal(for: interactionWindow) { [weak self] response in
+            guard let self else { return }
+            defer { self.endDialog() }
+            guard response == .OK, let url = picker.url else { return }
+            guard url.pathExtension.lowercased() == "app",
+                  let bundle = Bundle(url: url), bundle.executableURL != nil,
+                  bundle.bundleIdentifier != AppCatalog.ownBundleIdentifier else {
+                self.model.message = "请选择有效的卸载工具应用。"
+                return
+            }
+            self.model.updatePreferences { $0.uninstallerPath = url.path }
+        }
+    }
+
+    func openUninstaller(for app: InstalledApp) {
+        let tool = URL(fileURLWithPath: model.preferences.uninstallerPath)
+        guard FileManager.default.fileExists(atPath: app.url.path),
+              FileManager.default.fileExists(atPath: tool.path),
+              let bundle = Bundle(url: tool), bundle.executableURL != nil,
+              bundle.bundleIdentifier != AppCatalog.ownBundleIdentifier,
+              tool.resolvingSymlinksInPath() != app.url.resolvingSymlinksInPath() else {
+            model.message = "无法打开卸载工具或目标应用，请在应用管理中重新选择。"
+            model.requestRefresh(resetSearch: false)
+            return
+        }
+        NSWorkspace.shared.open([app.url], withApplicationAt: tool,
+                                configuration: NSWorkspace.OpenConfiguration()) { [weak self] _, error in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                if let error {
+                    self.model.message = "无法打开卸载工具：\(error.localizedDescription)"
+                } else {
+                    self.hidePanel()
+                }
+            }
         }
     }
 }

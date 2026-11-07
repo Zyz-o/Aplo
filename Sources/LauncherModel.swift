@@ -105,6 +105,7 @@ final class LauncherModel: ObservableObject {
     var hoveredAppID: String?
     @Published var inspectingApp: InstalledApp?
     var onSystemCommand: ((SystemCommand) -> Void)?
+    var onChooseUninstaller: (() -> Void)?
     var onTrashApplication: ((InstalledApp) -> Void)?
     var inlineResult: InlineResult? { InlineResult.parse(query) }
     func performInlineResult(_ result: InlineResult) {

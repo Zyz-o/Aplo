@@ -133,6 +133,7 @@ struct LauncherPreferences: Codable, Equatable {
     var entryLocation: LauncherEntryLocation = .both
     var toolbarPosition: LauncherToolbarPosition = .bottom
     var launchAutoHide = true
+    var uninstallerPath = ""
     var dismissStyle: LauncherDismissStyle = .outsideClick
     var pinToDesktop = false
     var magnificationEnabled = true
@@ -176,6 +177,7 @@ struct LauncherPreferences: Codable, Equatable {
         case f4ShortcutEnabled, compactGridColumns, fullscreenGridColumns, compactGridRows, fullscreenGridRows
         case hiddenAppIDs
         case labelFontFamily, labelWeight, labelColor, labelColorHex
+        case uninstallerPath
         case entryLocation, toolbarPosition, dismissStyle, launchAutoHide, pinToDesktop, magnificationEnabled
         case arrangement, compactArrangement
         case brandIconPercent, brandNamePercent
@@ -187,6 +189,7 @@ struct LauncherPreferences: Codable, Equatable {
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
+        uninstallerPath = (try? c.decode(String.self, forKey: .uninstallerPath)) ?? ""
         hotCorner = (try? c.decode(String.self, forKey: .hotCorner)) ?? "off"
         if !["off", "topLeft", "topRight", "bottomLeft", "bottomRight"].contains(hotCorner) { hotCorner = "off" }
         folderNavigation = (try? c.decode(String.self, forKey: .folderNavigation)) ?? "inherit"

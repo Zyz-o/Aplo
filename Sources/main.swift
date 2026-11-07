@@ -102,7 +102,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         applicationWatcher = ApplicationWatcher(paths: AppCatalog(includeSystemApplications: true).roots.map(\.path)) { [weak self] in
             self?.model.requestRefresh(resetSearch: false)
         }
-        if preview || CommandLine.arguments.contains("--show") { showPanel() }
+        showPanel()
     }
 
     func configureStatusItem() {
@@ -183,6 +183,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     func configureActions() {
         SoundManager.shared.bind(appStore: model)
         model.onSystemCommand = { [weak self] command in self?.confirmSystemCommand(command) }
+        model.onChooseUninstaller = { [weak self] in self?.chooseUninstaller() }
         model.onTrashApplication = { [weak self] app in self?.confirmTrashApplication(app) }
         model.onAppearancePreviewChanged = { [weak self] in
             guard let self else { return }

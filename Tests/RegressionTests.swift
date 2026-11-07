@@ -197,6 +197,11 @@ import AppKit
     }
     func testNewPreferenceMigrationAndHotCornerGeometry() async throws {
         let old = try JSONDecoder().decode(LauncherPreferences.self, from: Data("{}".utf8))
+        XCTAssertEqual(old.uninstallerPath, "")
+        var withTool = old
+        withTool.uninstallerPath = "/Applications/Pearcleaner.app"
+        let restoredTool = try JSONDecoder().decode(LauncherPreferences.self, from: JSONEncoder().encode(withTool))
+        XCTAssertEqual(restoredTool.uninstallerPath, withTool.uninstallerPath)
         XCTAssertFalse(old.f4ShortcutEnabled); XCTAssertEqual(old.hotCorner, "off")
         XCTAssertEqual(old.folderNavigation, "inherit"); XCTAssertEqual(old.compactGridColumns, 0)
         var p = old; p.hotCorner = "bottomRight"; p.folderNavigation = "continuous"; p.f4ShortcutEnabled = true; p.compactGridRows = 5

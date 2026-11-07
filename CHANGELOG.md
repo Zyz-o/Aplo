@@ -1,3 +1,12 @@
+# 3.17.2 — 2026-11-07
+
+- Show the launcher immediately on normal application startup.
+- Choose an external uninstaller under Applications settings. Context-menu uninstall sends the selected app to that tool, with errors surfaced when the tool is unavailable.
+
+<!-- summary-zh -->
+- 正常打开 Aplo 后直接显示启动台。
+- 应用管理新增卸载工具选择，右键卸载可交给所选工具处理；工具失效时显示提示。
+
 # 3.17.1 — 2026-11-06
 
 - Compact the settings sidebar and use lighter groups for everyday controls.

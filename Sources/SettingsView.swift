@@ -92,6 +92,7 @@ struct SettingsView: View {
             SearchResult(title: "启用音效", category: .shortcuts, section: "启用音效"),
             SearchResult(title: "选择音效", category: .shortcuts, section: "选择音效"),
             SearchResult(title: "键盘操作", category: .shortcuts, section: "键盘操作"),
+            SearchResult(title: "卸载工具", category: .hidden, section: "卸载工具"),
             SearchResult(title: "自动分类", category: .hidden, section: "自动分类"),
             SearchResult(title: "自动分类应用", category: .hidden, section: "自动分类应用"),
             SearchResult(title: "应用列表", category: .hidden, section: "应用列表"),
@@ -436,6 +437,19 @@ struct SettingsView: View {
                      : "方向键选择 · 回车打开 · Tab / Shift＋Tab 翻页\n⌃⌘F 切换显示方式 · Esc 逐层返回或收起")
             }
         case .hidden:
+            card("卸载工具", icon: "trash") {
+                Text(model.preferences.uninstallerPath.isEmpty
+                     ? model.text("系统废纸篓")
+                     : URL(fileURLWithPath: model.preferences.uninstallerPath).deletingPathExtension().lastPathComponent)
+                    .fontWeight(.medium)
+                HStack {
+                    Button(model.text("选择卸载工具…")) { model.onChooseUninstaller?() }
+                    if !model.preferences.uninstallerPath.isEmpty {
+                        Button(model.text("使用系统废纸篓")) { model.updatePreferences { $0.uninstallerPath = "" } }
+                    }
+                }
+                note("右键卸载会将应用交给所选工具。工具须支持接收 .app 文件，卸载由工具确认。")
+            }
             card("自动分类", icon: "square.grid.3x3") {
                 switchRow("自动分类应用", key: \.automaticCategories)
                 note("全屏和小窗口分别保存手动布局。关闭自动分类后可整理当前模式，另一模式不受影响。")
